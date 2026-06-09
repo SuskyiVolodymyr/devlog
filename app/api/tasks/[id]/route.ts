@@ -22,6 +22,9 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 })
+    }
     const task = updateTask(id, body)
     if (!task) return Response.json({ error: 'Task not found' }, { status: 404 })
     return Response.json(task)
