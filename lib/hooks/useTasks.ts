@@ -54,18 +54,23 @@ export function useTaskList(filters: TaskFilters) {
   }
 }
 
-export function useSubtaskCounts(tasks: Task[]) {
+export function useSubtaskStats(tasks: Task[]) {
   const queries = useQueries({
     queries: tasks.map((task) => ({
-      queryKey: ['subtask-count', task.id] as const,
+      queryKey: ['subtask-stats', task.id] as const,
       queryFn: async () => {
-        const data = await apiGetTasks(new URLSearchParams({ parentId: task.id, limit: '1' }))
-        return data.total
+        const [totalRes, doneRes] = await Promise.all([
+          apiGetTasks(new URLSearchParams({ parentId: task.id, limit: '1' })),
+          apiGetTasks(new URLSearchParams({ parentId: task.id, status: 'done', limit: '1' })),
+        ])
+        return { total: totalRes.total, done: doneRes.total }
       },
       staleTime: 30_000,
     })),
   })
-  return Object.fromEntries(tasks.map((task, i) => [task.id, queries[i]?.data ?? 0]))
+  return Object.fromEntries(
+    tasks.map((task, i) => [task.id, queries[i]?.data ?? { total: 0, done: 0 }])
+  )
 }
 
 export function useTask(id: string) {
@@ -113,7 +118,7 @@ export function useCreateTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       qc.invalidateQueries({ queryKey: ['subtasks'] })
-      qc.invalidateQueries({ queryKey: ['subtask-count'] })
+      qc.invalidateQueries({ queryKey: ['subtask-stats'] })
     },
   })
 }
@@ -137,7 +142,7 @@ export function useDeleteTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       qc.invalidateQueries({ queryKey: ['subtasks'] })
-      qc.invalidateQueries({ queryKey: ['subtask-count'] })
+      qc.invalidateQueries({ queryKey: ['subtask-stats'] })
     },
   })
 }

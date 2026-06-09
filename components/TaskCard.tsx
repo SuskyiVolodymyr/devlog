@@ -7,13 +7,25 @@ import { TASK_STATUSES } from '@/lib/constants'
 import StatusBadge from '@/components/StatusBadge'
 import PriorityBadge from '@/components/PriorityBadge'
 
+interface SubtaskStats {
+  total: number
+  done: number
+}
+
 interface TaskCardProps {
   task: Task
-  subtaskCount?: number
+  subtaskStats?: SubtaskStats
+  index?: number
   onEdit: (task: Task) => void
   onDelete: (id: string) => void
   onStatusChange: (id: string, status: TaskStatus) => void
   compact?: boolean
+}
+
+const PRIORITY_BORDER: Record<string, string> = {
+  high:   'border-l-red-500',
+  medium: 'border-l-amber-500',
+  low:    'border-l-zinc-600',
 }
 
 function relativeTime(iso: string): string {
@@ -31,7 +43,8 @@ function relativeTime(iso: string): string {
 
 function TaskCard({
   task,
-  subtaskCount = 0,
+  subtaskStats,
+  index,
   onEdit,
   onDelete,
   onStatusChange,
@@ -51,10 +64,20 @@ function TaskCard({
     onStatusChange(task.id, next)
   }
 
+  const hasSubtasks = !compact && subtaskStats && subtaskStats.total > 0
+  const allDone = hasSubtasks && subtaskStats!.done === subtaskStats!.total
+  const progressPct = hasSubtasks ? (subtaskStats!.done / subtaskStats!.total) * 100 : 0
+
   return (
     <div
       onClick={handleCardClick}
-      className={`group relative flex h-full cursor-pointer flex-col rounded-lg border border-zinc-700/60 bg-zinc-800/50 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-800 ${task.status === 'done' ? 'opacity-60' : ''}`}
+      className={[
+        'group relative flex h-full cursor-pointer flex-col rounded-lg border border-l-2 border-zinc-700/60 bg-zinc-800/50 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-800',
+        PRIORITY_BORDER[task.priority] ?? 'border-l-zinc-600',
+        task.status === 'done' ? 'opacity-60' : '',
+        !compact ? 'animate-[taskCardIn_0.4s_ease_both]' : '',
+      ].join(' ')}
+      style={!compact && index !== undefined ? { animationDelay: `${Math.min(index * 40, 400)}ms` } : undefined}
     >
       {/* Action buttons — visible on hover */}
       <div
@@ -94,8 +117,23 @@ function TaskCard({
           </p>
         )}
 
+        {/* Subtask progress bar */}
+        {hasSubtasks && (
+          <div className="flex items-center gap-2">
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-zinc-700">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${allDone ? 'bg-green-500' : 'bg-blue-500'}`}
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+            <span className="shrink-0 tabular-nums text-xs text-zinc-500">
+              {subtaskStats!.done}/{subtaskStats!.total}
+            </span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex items-center gap-2">
             <button
               data-action
               onClick={handleStatusCycle}
@@ -105,11 +143,6 @@ function TaskCard({
               <StatusBadge status={task.status} />
             </button>
             <PriorityBadge priority={task.priority} />
-            {subtaskCount > 0 && (
-              <span className="shrink-0 rounded bg-zinc-700 px-1.5 py-0.5 text-xs tabular-nums text-zinc-400">
-                {subtaskCount}
-              </span>
-            )}
           </div>
           <span className="shrink-0 text-xs text-zinc-500">
             {relativeTime(task.createdAt)}

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useTaskList,
-  useSubtaskCounts,
+  useSubtaskStats,
   useCreateTask,
   useUpdateTask,
   useDeleteTask,
@@ -26,7 +26,7 @@ export default function HomePage() {
 
   const qc = useQueryClient()
   const { tasks, total, hasMore, loadMore, isFetchingMore, loading, error: fetchError } = useTaskList(filters)
-  const subtaskCounts = useSubtaskCounts(tasks)
+  const subtaskStats = useSubtaskStats(tasks)
 
   const createTaskMutation = useCreateTask()
   const updateTaskMutation = useUpdateTask()
@@ -174,11 +174,12 @@ export default function HomePage() {
           ) : (
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {tasks.map((task) => (
+                {tasks.map((task, index) => (
                   <TaskCard
                     key={task.id}
                     task={task}
-                    subtaskCount={subtaskCounts[task.id] ?? 0}
+                    subtaskStats={subtaskStats[task.id]}
+                    index={index}
                     onEdit={openEdit}
                     onDelete={handleDelete}
                     onStatusChange={handleStatusChange}
