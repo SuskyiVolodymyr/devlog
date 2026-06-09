@@ -22,6 +22,19 @@ ANTHROPIC_API_KEY=   # required — get from https://console.anthropic.com
 
 The only external dependency. All AI features are live once the key is set.
 
+## Testing the app
+
+Click **Demo data** in the top-right header to load 9 pre-built tasks — no manual setup needed. The tasks are intentionally varied so every AI agent has something interesting to work with:
+
+| Agent | How to test |
+|-------|-------------|
+| **Prioritize** | Click "Prioritize" in the AI panel on the main page. Tasks span all statuses and priorities. |
+| **Backlog Review** | Click "Backlog Review" on the main page. Expect 3–4 flagged tasks: "Fix auth" (vague), "Refactor database layer" (stuck in-progress), "Implement real-time notifications" (no decomposition). |
+| **Decompose** | Open "Set up CI/CD pipeline" or "Investigate slow task list queries". Both have clear descriptions → agent creates subtasks directly. |
+| **Status Update** | Open "Write API documentation". It has 3 subtasks and execution notes → agent drafts a Slack-style update. |
+
+Clicking "Demo data" again adds another batch on top. To start clean, delete all tasks and click it once more.
+
 ## What it does
 
 ### Task tracker
