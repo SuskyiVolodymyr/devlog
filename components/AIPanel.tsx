@@ -6,12 +6,20 @@ import { AI_ACTIONS, buildAgentUrl, type AIActionKey } from '@/lib/constants'
 
 type TaskRef = { id: string; title: string }
 
-function renderMarkdown(text: string): React.ReactNode {
+const CURSOR = (
+  <span
+    key="cursor"
+    className="ml-0.5 inline-block h-[0.85em] w-0.5 align-middle"
+    style={{ animation: 'blink 1s step-start infinite', background: 'rgb(161 161 170)' }}
+  />
+)
+
+function renderMarkdown(text: string, streaming = false): React.ReactNode {
   const elements: React.ReactNode[] = []
   let listItems: React.ReactNode[] = []
 
-  function inline(s: string) {
-    return s.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]*\))/).map((p, i) => {
+  function inline(s: string, appendCursor = false) {
+    const parts = s.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]*\))/).map((p, i) => {
       if (p.startsWith('**') && p.endsWith('**'))
         return <strong key={i} className="font-semibold text-zinc-100">{p.slice(2, -2)}</strong>
       const linkMatch = p.match(/^\[([^\]]+)\]\([^)]*\)$/)
@@ -19,7 +27,26 @@ function renderMarkdown(text: string): React.ReactNode {
         return <strong key={i} className="font-semibold text-zinc-100">{linkMatch[1]}</strong>
       return p
     })
+    if (appendCursor) parts.push(CURSOR)
+    return parts
   }
+
+  const lines = text.split('\n')
+  lines.forEach((line, i) => {
+    const isLast = i === lines.length - 1
+    if (!line.trim()) { flushList(); return }
+    if (line.startsWith('• ') || line.startsWith('- ')) {
+      listItems.push(
+        <li key={i} className="flex items-start gap-2 text-zinc-300">
+          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
+          <span>{inline(line.slice(2), streaming && isLast)}</span>
+        </li>
+      )
+    } else {
+      flushList()
+      elements.push(<p key={i} className="text-zinc-200">{inline(line, streaming && isLast)}</p>)
+    }
+  })
 
   function flushList() {
     if (!listItems.length) return
@@ -31,20 +58,6 @@ function renderMarkdown(text: string): React.ReactNode {
     listItems = []
   }
 
-  text.split('\n').forEach((line, i) => {
-    if (!line.trim()) { flushList(); return }
-    if (line.startsWith('• ') || line.startsWith('- ')) {
-      listItems.push(
-        <li key={i} className="flex items-start gap-2 text-zinc-300">
-          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
-          <span>{inline(line.slice(2))}</span>
-        </li>
-      )
-    } else {
-      flushList()
-      elements.push(<p key={i} className="text-zinc-200">{inline(line)}</p>)
-    }
-  })
   flushList()
   return elements
 }
@@ -141,6 +154,15 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
         if (!reader) return
         const decoder = new TextDecoder()
         let accumulated = ''
+        let rafId: number | null = null
+
+        // Batch state updates to one per animation frame — eliminates per-token re-renders
+        const flush = () => {
+          rafId = null
+          if (action === 'prioritize') setPrioritizeText(accumulated)
+          else if (action === 'backlog-review') setBacklogText(accumulated)
+          else setResponse(accumulated)
+        }
 
         while (true) {
           const { done, value } = await reader.read()
@@ -151,25 +173,22 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
             const data = line.slice(6)
             if (data === '[DONE]') break
             if (data.startsWith('[ERROR] ')) {
+              if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null }
               accumulated = `Error: ${data.slice(8)}`
               setResponse(accumulated)
               break
             }
             try {
-              // JSON-encoded delta: {"d":"..."}
               accumulated += (JSON.parse(data) as { d: string }).d
             } catch {
               accumulated += data
             }
-            if (action === 'prioritize') {
-              setPrioritizeText(accumulated)
-            } else if (action === 'backlog-review') {
-              setBacklogText(accumulated)
-            } else {
-              setResponse(accumulated)
-            }
+            if (rafId === null) rafId = requestAnimationFrame(flush)
           }
         }
+        // Final flush — pick up any tokens not yet committed
+        if (rafId !== null) cancelAnimationFrame(rafId)
+        flush()
         rawText = accumulated
       } else {
         rawText = await res.text()
@@ -414,7 +433,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
               {/* Streaming body */}
               <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
                 {displayText ? (
-                  renderMarkdown(displayText)
+                  renderMarkdown(displayText, loading !== null)
                 ) : (
                   <div className="flex items-center gap-2 text-zinc-500">
                     <svg className="h-4 w-4 animate-spin text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
