@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useTask, useSubtasks } from '@/lib/hooks/useTasks'
 import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
@@ -48,7 +48,7 @@ export default function TaskDetailPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [aiPanelOpen])
 
-  async function handleNotesBlur() {
+  const handleNotesBlur = useCallback(async () => {
     if (!task || notesValue === task.notes) return
     try {
       const res = await fetch(`/api/tasks/${id}`, {
@@ -64,9 +64,9 @@ export default function TaskDetailPage() {
     } catch {
       setMutationError('Network error. Failed to save notes.')
     }
-  }
+  }, [id, task, notesValue, setTask])
 
-  async function handleStatusChange(taskId: string, status: TaskStatus) {
+  const handleStatusChange = useCallback(async (taskId: string, status: TaskStatus) => {
     // Optimistic update
     const previousStatus = taskId === id ? task?.status : subtasks.find((s) => s.id === taskId)?.status
     if (taskId === id) {
@@ -91,9 +91,9 @@ export default function TaskDetailPage() {
       else fetchSubtasks()
       setMutationError('Network error. Please try again.')
     }
-  }
+  }, [id, task, subtasks, setTask, fetchSubtasks])
 
-  async function handleCreateSubtask(input: CreateTaskInput | UpdateTaskInput) {
+  const handleCreateSubtask = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     setMutationError(null)
     try {
       const res = await fetch('/api/tasks', {
@@ -111,9 +111,9 @@ export default function TaskDetailPage() {
     } catch {
       setMutationError('Network error. Please try again.')
     }
-  }
+  }, [id, fetchSubtasks])
 
-  async function handleUpdateSubtask(input: CreateTaskInput | UpdateTaskInput) {
+  const handleUpdateSubtask = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     if (!editingSubtask) return
     setMutationError(null)
     try {
@@ -133,9 +133,9 @@ export default function TaskDetailPage() {
     } catch {
       setMutationError('Network error. Please try again.')
     }
-  }
+  }, [editingSubtask, fetchSubtasks])
 
-  async function handleDeleteSubtask(subtaskId: string) {
+  const handleDeleteSubtask = useCallback(async (subtaskId: string) => {
     setMutationError(null)
     try {
       const res = await fetch(`/api/tasks/${subtaskId}`, { method: 'DELETE' })
@@ -147,17 +147,17 @@ export default function TaskDetailPage() {
     } catch {
       setMutationError('Network error. Please try again.')
     }
-  }
+  }, [fetchSubtasks])
 
-  function openEditSubtask(t: Task) {
+  const openEditSubtask = useCallback((t: Task) => {
     setEditingSubtask(t)
     setShowSubtaskForm(true)
-  }
+  }, [])
 
-  function closeSubtaskForm() {
+  const closeSubtaskForm = useCallback(() => {
     setShowSubtaskForm(false)
     setEditingSubtask(undefined)
-  }
+  }, [])
 
   if (loading) {
     return (
