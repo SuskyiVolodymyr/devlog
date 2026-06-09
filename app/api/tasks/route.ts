@@ -1,5 +1,6 @@
 import { type NextRequest } from 'next/server'
-import { getTasks, createTask } from '@/lib/db'
+import { getTasksPage, createTask } from '@/lib/db'
+import { TASK_STATUSES } from '@/lib/constants'
 import type { TaskFilters, TaskStatus } from '@/lib/types'
 
 export async function GET(request: NextRequest) {
@@ -11,22 +12,24 @@ export async function GET(request: NextRequest) {
     const parentIdRaw = searchParams.has('parentId') ? searchParams.get('parentId') : undefined
     const parentId = parentIdRaw === 'null' ? null : parentIdRaw
 
-    const VALID_STATUSES = ['todo', 'in-progress', 'done']
-    const VALID_SORTS = ['priority', 'date']
-    if (status && !VALID_STATUSES.includes(status)) {
+    if (status && !TASK_STATUSES.includes(status as TaskStatus)) {
       return Response.json({ error: 'Invalid status' }, { status: 400 })
     }
-    if (sort && !VALID_SORTS.includes(sort)) {
+    if (sort && !['priority', 'date'].includes(sort)) {
       return Response.json({ error: 'Invalid sort' }, { status: 400 })
     }
 
+    const pageParam = searchParams.get('page')
+    const limitParam = searchParams.get('limit')
+    const page = pageParam ? Math.max(0, parseInt(pageParam, 10)) : 0
+    const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam, 10))) : 50
+
     const filters: TaskFilters = {}
-    if (status) filters.status = status
-    if (sort) filters.sort = sort
+    if (status) filters.status = status as TaskStatus
+    if (sort) filters.sort = sort as TaskFilters['sort']
     if (parentId !== undefined) filters.parentId = parentId
 
-    const tasks = getTasks(filters)
-    return Response.json(tasks)
+    return Response.json(getTasksPage(filters, page, limit))
   } catch {
     return Response.json({ error: 'Failed to fetch tasks' }, { status: 500 })
   }
