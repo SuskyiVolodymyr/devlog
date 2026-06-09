@@ -27,7 +27,7 @@ export async function POST(
       runStatusUpdateAgent(id, notes, onToken).then(() => undefined)
     )
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return Response.json({ error: message }, { status: 500 })
+    console.error('[/api/ai/status-update]', error)
+    return Response.json({ error: 'AI agent failed. Please try again.' }, { status: 500 })
   }
 }

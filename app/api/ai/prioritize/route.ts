@@ -15,7 +15,7 @@ export async function POST() {
       runPrioritizationAgent(onToken).then(() => undefined)
     )
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return Response.json({ error: message }, { status: 500 })
+    console.error('[/api/ai/prioritize]', error)
+    return Response.json({ error: 'AI agent failed. Please try again.' }, { status: 500 })
   }
 }

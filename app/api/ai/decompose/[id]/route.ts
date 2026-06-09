@@ -27,7 +27,7 @@ export async function POST(
       runDecompositionAgent(id, clarification, onToken).then(() => undefined)
     )
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return Response.json({ error: message }, { status: 500 })
+    console.error('[/api/ai/decompose]', error)
+    return Response.json({ error: 'AI agent failed. Please try again.' }, { status: 500 })
   }
 }
