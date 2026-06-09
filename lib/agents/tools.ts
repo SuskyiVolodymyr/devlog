@@ -83,7 +83,7 @@ export async function executeDbTool(
     }
 
     case 'create_task':
-      return createTask(input)
+      return createTask(input as unknown as import('@/lib/types').CreateTaskInput)
 
     default:
       throw new Error(`Unknown tool: ${name}`)
