@@ -100,11 +100,13 @@ export function createTask(input: CreateTaskInput): Task {
   return getTask(id) as Task
 }
 
+const UPDATABLE_COLUMNS = new Set<keyof UpdateTaskInput>(['title', 'description', 'status', 'priority', 'notes'])
+
 export function updateTask(id: string, input: UpdateTaskInput): Task | null {
   const existing = getTask(id)
   if (!existing) return null
 
-  const fields = Object.keys(input) as (keyof UpdateTaskInput)[]
+  const fields = (Object.keys(input) as (keyof UpdateTaskInput)[]).filter((f) => UPDATABLE_COLUMNS.has(f))
   if (fields.length === 0) return existing
 
   const setClauses = fields.map((f) => `${f} = ?`)

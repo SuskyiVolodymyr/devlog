@@ -23,6 +23,9 @@ export default function TaskDetailPage() {
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Clear pending save on unmount to avoid setState after unmount
+  useEffect(() => () => { if (saveTimeout.current) clearTimeout(saveTimeout.current) }, [])
+
   const fetchTask = useCallback(async () => {
     try {
       const res = await fetch(`/api/tasks/${id}`)
@@ -54,22 +57,18 @@ export default function TaskDetailPage() {
     fetchSubtasks()
   }, [fetchTask, fetchSubtasks])
 
-  // Auto-save notes on blur (debounced)
-  function handleNotesBlur() {
+  async function handleNotesBlur() {
     if (!task || notesValue === task.notes) return
-    if (saveTimeout.current) clearTimeout(saveTimeout.current)
-    saveTimeout.current = setTimeout(async () => {
-      try {
-        await fetch(`/api/tasks/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notes: notesValue }),
-        })
-        setTask((prev) => prev ? { ...prev, notes: notesValue } : prev)
-      } catch {
-        // ignore
-      }
-    }, 300)
+    try {
+      await fetch(`/api/tasks/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: notesValue }),
+      })
+      setTask((prev) => prev ? { ...prev, notes: notesValue } : prev)
+    } catch {
+      // ignore
+    }
   }
 
   async function handleStatusChange(taskId: string, status: TaskStatus) {
@@ -249,7 +248,7 @@ export default function TaskDetailPage() {
         {/* Desktop AI sidebar */}
         <aside className="hidden w-72 shrink-0 lg:block">
           <div className="sticky top-20">
-            <AIPanel taskId={id} />
+            <AIPanel taskId={id} onRefresh={fetchSubtasks} />
           </div>
         </aside>
       </div>
@@ -275,7 +274,7 @@ export default function TaskDetailPage() {
                 </svg>
               </button>
             </div>
-            <AIPanel taskId={id} />
+            <AIPanel taskId={id} onRefresh={fetchSubtasks} />
           </div>
         </div>
       )}
