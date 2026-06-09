@@ -32,6 +32,29 @@ _To be filled as work progresses_
 
 ---
 
+## Phase 1: Shared setup (deps + types)
+
+**What I asked Claude to do**: Install `better-sqlite3`, `@anthropic-ai/sdk`, `nanoid` and create `lib/types.ts` with shared `Task` type — so all parallel agents branch from a consistent base.
+
+**Why this order matters**: Three agents will work simultaneously on data layer, UI, and AI infrastructure. If they all tried to define `Task` independently, we'd get type drift. Doing it once upfront means every agent imports from `@/lib/types`.
+
+---
+
+## Phase 2: Parallel agents — data layer + UI + AI infrastructure
+
+**What I asked Claude to do**: Spawn three sub-agents simultaneously using `Agent` tool with `isolation: "worktree"`:
+- Agent 1 (`feat/data-layer`): `lib/db.ts` + all CRUD API routes
+- Agent 2 (`feat/task-ui`): React components + page layout + Tailwind styling
+- Agent 3 (`feat/ai-agents`): `lib/agents/loop.ts` + 3 agent implementations + AI API routes
+
+**Why parallel**: These three concerns touch different parts of the codebase with minimal overlap. Running them sequentially would be 3× slower. Claude Code's sub-agent + worktree isolation makes true parallelism possible without file conflicts.
+
+**What Claude did**: Each agent got a detailed prompt with file paths, type definitions, and conventions from `.claude/`. Each created its own branch, committed, pushed, and opened a PR.
+
+**What I changed / where I intervened**: _To be filled after agents complete_
+
+---
+
 ## Observations so far
 
 - Next.js 16 auto-generates both `CLAUDE.md` and `AGENTS.md` via `create-next-app` — the ecosystem is catching up to agent-assisted development natively
