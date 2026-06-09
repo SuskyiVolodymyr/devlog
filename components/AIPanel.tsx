@@ -1,45 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { AI_ACTIONS, buildAgentUrl, type AIActionKey } from '@/lib/constants'
+
+type ActionKey = AIActionKey
 
 interface AIPanelProps {
   taskId?: string
   onRefresh?: () => void
-}
-
-type ActionKey = 'prioritize' | 'decompose' | 'status-update'
-
-interface Action {
-  key: ActionKey
-  label: string
-  description: string
-  taskOnly?: boolean
-}
-
-const ACTIONS: Action[] = [
-  {
-    key: 'prioritize',
-    label: 'Prioritize',
-    description: 'Recommend where to start based on all tasks',
-  },
-  {
-    key: 'decompose',
-    label: 'Decompose',
-    description: 'Break this task into subtasks',
-    taskOnly: true,
-  },
-  {
-    key: 'status-update',
-    label: 'Status Update',
-    description: 'Draft a Slack-style update for this task',
-    taskOnly: true,
-  },
-]
-
-function buildUrl(action: ActionKey, taskId?: string): string {
-  if (action === 'prioritize') return '/api/ai/prioritize'
-  if (action === 'decompose') return `/api/ai/decompose/${taskId}`
-  return `/api/ai/status-update/${taskId}`
 }
 
 export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
@@ -48,24 +16,34 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   const [activeAction, setActiveAction] = useState<ActionKey | null>(null)
   const [clarification, setClarification] = useState('')
   const [awaitingClarification, setAwaitingClarification] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
 
   async function callAgent(action: ActionKey, body?: Record<string, string>) {
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
+    const timeout = setTimeout(() => abortRef.current?.abort(), 30_000)
+
     setLoading(action)
     setResponse('')
 
     try {
-      const res = await fetch(buildUrl(action, taskId), {
+      const res = await fetch(buildAgentUrl(action, taskId), {
         method: 'POST',
         headers: body ? { 'Content-Type': 'application/json' } : {},
         body: body ? JSON.stringify(body) : undefined,
+        signal: abortRef.current.signal,
       })
 
-      let text: string
+      let rawText: string
       if (!res.ok) {
         // Safely read the error body — it may be HTML or plain text
-        text = await res.text()
+        rawText = await res.text()
         try {
-          const json = JSON.parse(text) as { error?: string }
+          const json = JSON.parse(rawText) as { error?: string }
           setResponse(`Error: ${json.error ?? 'Something went wrong'}`)
         } catch {
           setResponse(`Error: ${res.status} ${res.statusText}`)
@@ -94,29 +72,55 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
             }
           }
         }
-        text = accumulated
+        rawText = accumulated
       } else {
-        text = await res.text()
-        try {
-          const json = JSON.parse(text) as { result?: string }
-          text = json.result ?? text
-        } catch {
-          // plain text response
-        }
-        setResponse(text)
+        rawText = await res.text()
       }
 
-      // Decompose agent may return a clarifying question instead of creating subtasks
-      if (action === 'decompose' && text.trimEnd().endsWith('?')) {
-        setAwaitingClarification(true)
+      const responseText = (() => {
+        try {
+          const json = JSON.parse(rawText) as { result?: string; needsClarification?: boolean }
+          // For decompose, prefer explicit field, fall back to heuristic
+          if (action === 'decompose') {
+            const needsClarification = json.needsClarification ?? rawText.trimEnd().endsWith('?')
+            if (needsClarification) {
+              setAwaitingClarification(true)
+            } else {
+              setAwaitingClarification(false)
+              setClarification('')
+              onRefresh?.()
+            }
+          }
+          return json.result ?? rawText
+        } catch {
+          // Plain text / SSE accumulated string
+          if (action === 'decompose') {
+            const needsClarification = rawText.trimEnd().endsWith('?')
+            if (needsClarification) {
+              setAwaitingClarification(true)
+            } else {
+              setAwaitingClarification(false)
+              setClarification('')
+              onRefresh?.()
+            }
+          }
+          return rawText
+        }
+      })()
+
+      if (!responseText.trim()) {
+        setResponse('No response from agent. Please try again.')
       } else {
-        setAwaitingClarification(false)
-        setClarification('')
-        if (action === 'decompose') onRefresh?.()
+        setResponse(responseText)
       }
     } catch (err) {
-      setResponse(`Error: ${err instanceof Error ? err.message : 'Network error'}`)
+      if (err instanceof Error && err.name === 'AbortError') {
+        setResponse('Request timed out or cancelled. Please try again.')
+      } else {
+        setResponse(`Error: ${err instanceof Error ? err.message : 'Network error'}`)
+      }
     } finally {
+      clearTimeout(timeout)
       setLoading(null)
     }
   }
@@ -133,7 +137,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
     callAgent('decompose', { clarification: clarification.trim() })
   }
 
-  const visibleActions = ACTIONS.filter((a) => !a.taskOnly || !!taskId)
+  const visibleActions = AI_ACTIONS.filter((a) => !a.taskOnly || !!taskId)
 
   return (
     <aside className="flex flex-col gap-4 rounded-xl border border-zinc-700/60 bg-zinc-800/40 p-4">
@@ -165,12 +169,12 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
       {(loading !== null || response) && (
         <div className="flex flex-col gap-3">
           {loading !== null && (
-            <div className="flex items-center gap-2 text-sm text-zinc-400">
+            <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-zinc-400">
               <svg className="h-4 w-4 animate-spin text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Running {ACTIONS.find((a) => a.key === activeAction)?.label}…
+              Running {AI_ACTIONS.find((a) => a.key === activeAction)?.label}…
             </div>
           )}
 
