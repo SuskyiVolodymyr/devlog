@@ -258,7 +258,7 @@ export default function HomePage() {
           onClick={() => setAiPanelOpen(false)}
         >
           <div
-            className="absolute right-0 top-0 h-full w-80 overflow-y-auto bg-zinc-900 p-4 shadow-2xl"
+            className="absolute right-0 top-0 h-full w-full overflow-y-auto bg-zinc-900 p-4 shadow-2xl sm:w-80"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex justify-end">
