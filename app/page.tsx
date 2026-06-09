@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTaskList } from '@/lib/hooks/useTasks'
 import type { Task, TaskPage, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
 import TaskCard from '@/components/TaskCard'
@@ -52,7 +52,7 @@ export default function HomePage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [aiPanelOpen])
 
-  async function handleCreate(input: CreateTaskInput | UpdateTaskInput) {
+  const handleCreate = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     setMutationError(null)
     try {
       const res = await fetch('/api/tasks', {
@@ -70,9 +70,9 @@ export default function HomePage() {
     } catch {
       setMutationError('Network error. Please try again.')
     }
-  }
+  }, [fetchTasks])
 
-  async function handleUpdate(input: CreateTaskInput | UpdateTaskInput) {
+  const handleUpdate = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     if (!editingTask) return
     setMutationError(null)
     try {
@@ -92,9 +92,9 @@ export default function HomePage() {
     } catch {
       setMutationError('Network error. Please try again.')
     }
-  }
+  }, [editingTask, fetchTasks])
 
-  async function handleDelete(id: string) {
+  const handleDelete = useCallback(async (id: string) => {
     setMutationError(null)
     try {
       const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
@@ -106,12 +106,11 @@ export default function HomePage() {
     } catch {
       setMutationError('Network error. Please try again.')
     }
-  }
+  }, [fetchTasks])
 
-  async function handleStatusChange(id: string, status: TaskStatus) {
+  const handleStatusChange = useCallback(async (id: string, status: TaskStatus) => {
     const previous = tasks.find((t) => t.id === id)?.status
     if (previous === undefined) return
-    // Optimistic update — flip the badge immediately
     setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status } : t))
     try {
       const res = await fetch(`/api/tasks/${id}`, {
@@ -120,7 +119,6 @@ export default function HomePage() {
         body: JSON.stringify({ status }),
       })
       if (!res.ok) {
-        // Revert on failure
         setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: previous } : t))
         setMutationError('Failed to update status')
       }
@@ -128,17 +126,17 @@ export default function HomePage() {
       setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: previous } : t))
       setMutationError('Network error. Please try again.')
     }
-  }
+  }, [tasks, setTasks])
 
-  function openEdit(task: Task) {
+  const openEdit = useCallback((task: Task) => {
     setEditingTask(task)
     setShowForm(true)
-  }
+  }, [])
 
-  function closeForm() {
+  const closeForm = useCallback(() => {
     setShowForm(false)
     setEditingTask(undefined)
-  }
+  }, [])
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">

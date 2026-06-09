@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Task, TaskStatus } from '@/lib/types'
 import { TASK_STATUSES } from '@/lib/constants'
@@ -28,7 +29,7 @@ function relativeTime(iso: string): string {
   return `${months} month${months === 1 ? '' : 's'} ago`
 }
 
-export default function TaskCard({
+function TaskCard({
   task,
   subtaskCount = 0,
   onEdit,
@@ -116,3 +117,5 @@ export default function TaskCard({
     </div>
   )
 }
+
+export default memo(TaskCard)
