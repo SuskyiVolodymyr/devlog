@@ -1,11 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import type { Task, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
-import { TASK_STATUSES, TASK_PRIORITIES } from '@/lib/constants'
-
-type TaskStatus = typeof TASK_STATUSES[number]
-type TaskPriority = typeof TASK_PRIORITIES[number]
+import type { Task, TaskStatus, TaskPriority, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import { STATUS_OPTIONS, PRIORITY_OPTIONS } from '@/lib/styling'
 
 interface TaskFormProps {
   task?: Task
@@ -13,18 +10,6 @@ interface TaskFormProps {
   onClose: () => void
   parentId?: string
 }
-
-const STATUS_OPTIONS = [
-  { label: 'Todo', value: 'todo' as const },
-  { label: 'In Progress', value: 'in-progress' as const },
-  { label: 'Done', value: 'done' as const },
-] satisfies { label: string; value: typeof TASK_STATUSES[number] }[]
-
-const PRIORITY_OPTIONS = [
-  { label: 'Low', value: 'low' as const },
-  { label: 'Medium', value: 'medium' as const },
-  { label: 'High', value: 'high' as const },
-] satisfies { label: string; value: typeof TASK_PRIORITIES[number] }[]
 
 export default function TaskForm({ task, onSubmit, onClose, parentId }: TaskFormProps) {
   const [title, setTitle] = useState(task?.title ?? '')
