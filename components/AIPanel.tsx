@@ -17,12 +17,20 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   const [clarification, setClarification] = useState('')
   const [awaitingClarification, setAwaitingClarification] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [expanded, setExpanded] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const clarificationRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     return () => { abortRef.current?.abort() }
   }, [])
+
+  useEffect(() => {
+    if (!expanded) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setExpanded(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [expanded])
 
   // Tick elapsed seconds while a request is in flight
   useEffect(() => {
@@ -166,6 +174,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   const visibleActions = AI_ACTIONS.filter((a) => !a.taskOnly || !!taskId)
 
   return (
+    <>
     <aside className="flex flex-col gap-4 rounded-xl border border-zinc-700/60 bg-zinc-800/40 p-4">
       <div className="flex items-center gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
@@ -208,8 +217,20 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
           )}
 
           {response && (
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-              <p className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-zinc-300">
+            <div className="rounded-lg border border-zinc-700 bg-zinc-900">
+              <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-1.5">
+                <span className="text-xs text-zinc-500">{AI_ACTIONS.find((a) => a.key === activeAction)?.label}</span>
+                <button
+                  onClick={() => setExpanded(true)}
+                  aria-label="Expand response"
+                  className="rounded p-0.5 text-zinc-600 transition-colors hover:text-zinc-300"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+              <p className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-zinc-300">
                 {response}
               </p>
             </div>
@@ -238,5 +259,38 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
         </div>
       )}
     </aside>
+
+    {expanded && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        onClick={() => setExpanded(false)}
+      >
+        <div
+          className="flex w-full max-w-3xl flex-col gap-3 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
+            <span className="text-sm font-semibold text-zinc-200">
+              {AI_ACTIONS.find((a) => a.key === activeAction)?.label}
+            </span>
+            <button
+              onClick={() => setExpanded(false)}
+              aria-label="Close"
+              className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-200"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+          <div className="max-h-[70vh] overflow-y-auto px-5 pb-5">
+            <p className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-zinc-300">
+              {response}
+            </p>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
