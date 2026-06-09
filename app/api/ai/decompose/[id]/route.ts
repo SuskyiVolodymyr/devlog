@@ -2,6 +2,7 @@ import { runDecompositionAgent } from '@/lib/agents/decompose'
 import { getTask } from '@/lib/db'
 import { headers } from 'next/headers'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { createAgentSSEResponse } from '@/lib/sse'
 
 export async function POST(
   request: Request,
@@ -22,9 +23,9 @@ export async function POST(
     const body = await request.json().catch(() => ({}))
     const clarification = typeof body.clarification === 'string' ? body.clarification : undefined
 
-    const result = await runDecompositionAgent(id, clarification)
-    const needsClarification = result.trimEnd().endsWith('?')
-    return Response.json({ result, needsClarification })
+    return createAgentSSEResponse((onToken) =>
+      runDecompositionAgent(id, clarification, onToken).then(() => undefined)
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     return Response.json({ error: message }, { status: 500 })

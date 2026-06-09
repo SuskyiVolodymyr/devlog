@@ -4,7 +4,11 @@ import { CLAUDE_MODEL_FAST } from '@/lib/constants'
 
 const SYSTEM_PROMPT = `You are a status update writer for an engineering team. Write a short Slack-style async update (3-5 sentences, flowing prose, no bullet points) based on the provided task and subtask data. Tone: casual but professional, like a real teammate. Mention what's done, what's in progress, what's next or blocked. Start naturally with the task context — not "Update for task X:".`
 
-export async function runStatusUpdateAgent(taskId: string, notes?: string): Promise<string> {
+export async function runStatusUpdateAgent(
+  taskId: string,
+  notes?: string,
+  onToken?: (delta: string) => void
+): Promise<string> {
   const task = getTask(taskId)
   if (!task) throw new Error(`Task ${taskId} not found`)
   const subtasks = getSubtasks(taskId)
@@ -17,6 +21,6 @@ export async function runStatusUpdateAgent(taskId: string, notes?: string): Prom
     [{ role: 'user', content: userMessage }],
     [],
     async () => { throw new Error('no tools configured') },
-    { model: CLAUDE_MODEL_FAST, maxTokens: 512 }
+    { model: CLAUDE_MODEL_FAST, maxTokens: 512, onToken }
   )
 }
