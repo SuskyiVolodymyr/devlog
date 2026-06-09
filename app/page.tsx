@@ -1,9 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useTaskList } from '@/lib/hooks/useTasks'
-import type { Task, TaskPage, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
-import { apiCreateTask, apiUpdateTask, apiDeleteTask, parseApiError } from '@/lib/api-client'
+import { useState, useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import {
+  useTaskList,
+  useSubtaskCounts,
+  useCreateTask,
+  useUpdateTask,
+  useDeleteTask,
+  useUpdateTaskStatus,
+} from '@/lib/hooks/useTasks'
+import type { Task, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
 import TaskCard from '@/components/TaskCard'
 import FilterBar from '@/components/FilterBar'
 import TaskForm from '@/components/TaskForm'
@@ -17,32 +24,14 @@ export default function HomePage() {
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [seeding, setSeeding] = useState(false)
 
-  const { tasks, setTasks, total, hasMore, loadMore, loading, error: fetchError, refetch: fetchTasks } = useTaskList(filters)
+  const qc = useQueryClient()
+  const { tasks, total, hasMore, loadMore, isFetchingMore, loading, error: fetchError } = useTaskList(filters)
+  const subtaskCounts = useSubtaskCounts(tasks)
 
-  // Fetch subtask counts for each top-level task (N+1 trade-off, bounded by page size)
-  // Uses limit=1 so only the total is returned, not task bodies
-  const [subtaskCounts, setSubtaskCounts] = useState<Record<string, number>>({})
-  const fetchSubtaskCounts = useCallback(async (taskList: Task[]) => {
-    const counts: Record<string, number> = {}
-    await Promise.all(
-      taskList.map(async (task) => {
-        try {
-          const res = await fetch(`/api/tasks?parentId=${task.id}&limit=1`)
-          if (res.ok) {
-            const data = await res.json() as TaskPage
-            counts[task.id] = data.total
-          }
-        } catch {
-          // ignore individual failures
-        }
-      })
-    )
-    setSubtaskCounts(counts)
-  }, [])
-
-  useEffect(() => {
-    if (tasks.length > 0) fetchSubtaskCounts(tasks)
-  }, [tasks, fetchSubtaskCounts])
+  const createTaskMutation = useCreateTask()
+  const updateTaskMutation = useUpdateTask()
+  const deleteTaskMutation = useDeleteTask()
+  const updateStatusMutation = useUpdateTaskStatus()
 
   // Escape key dismisses mobile AI panel
   useEffect(() => {
@@ -54,51 +43,35 @@ export default function HomePage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [aiPanelOpen])
 
-  const handleCreate = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
+  const handleCreate = useCallback((input: CreateTaskInput | UpdateTaskInput) => {
     setMutationError(null)
-    try {
-      await apiCreateTask(input as CreateTaskInput)
-      setShowForm(false)
-      fetchTasks()
-    } catch (err) {
-      setMutationError(err instanceof Error ? err.message : 'Failed to create task')
-    }
-  }, [fetchTasks])
+    createTaskMutation.mutate(input as CreateTaskInput, {
+      onSuccess: () => setShowForm(false),
+      onError: (err) => setMutationError(err instanceof Error ? err.message : 'Failed to create task'),
+    })
+  }, [createTaskMutation])
 
-  const handleUpdate = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
+  const handleUpdate = useCallback((input: CreateTaskInput | UpdateTaskInput) => {
     if (!editingTask) return
     setMutationError(null)
-    try {
-      await apiUpdateTask(editingTask.id, input as UpdateTaskInput)
-      setEditingTask(undefined)
-      setShowForm(false)
-      fetchTasks()
-    } catch (err) {
-      setMutationError(err instanceof Error ? err.message : 'Failed to update task')
-    }
-  }, [editingTask, fetchTasks])
+    updateTaskMutation.mutate({ id: editingTask.id, input: input as UpdateTaskInput }, {
+      onSuccess: () => { setEditingTask(undefined); setShowForm(false) },
+      onError: (err) => setMutationError(err instanceof Error ? err.message : 'Failed to update task'),
+    })
+  }, [editingTask, updateTaskMutation])
 
-  const handleDelete = useCallback(async (id: string) => {
+  const handleDelete = useCallback((id: string) => {
     setMutationError(null)
-    try {
-      await apiDeleteTask(id)
-      fetchTasks()
-    } catch (err) {
-      setMutationError(err instanceof Error ? err.message : 'Failed to delete task')
-    }
-  }, [fetchTasks])
+    deleteTaskMutation.mutate(id, {
+      onError: (err) => setMutationError(err instanceof Error ? err.message : 'Failed to delete task'),
+    })
+  }, [deleteTaskMutation])
 
-  const handleStatusChange = useCallback(async (id: string, status: TaskStatus) => {
-    const previous = tasks.find((t) => t.id === id)?.status
-    if (previous === undefined) return
-    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status } : t))
-    try {
-      await apiUpdateTask(id, { status })
-    } catch {
-      setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: previous } : t))
-      setMutationError('Failed to update status')
-    }
-  }, [tasks, setTasks])
+  const handleStatusChange = useCallback((id: string, status: TaskStatus) => {
+    updateStatusMutation.mutate({ taskId: id, status }, {
+      onError: () => setMutationError('Failed to update status'),
+    })
+  }, [updateStatusMutation])
 
   const openEdit = useCallback((task: Task) => {
     setEditingTask(task)
@@ -116,13 +89,14 @@ export default function HomePage() {
     try {
       const res = await fetch('/api/dev/seed', { method: 'POST' })
       if (!res.ok) throw new Error('Seed failed')
-      fetchTasks()
+      await qc.invalidateQueries({ queryKey: ['tasks'] })
+      await qc.invalidateQueries({ queryKey: ['subtask-count'] })
     } catch {
       setMutationError('Failed to load demo data')
     } finally {
       setSeeding(false)
     }
-  }, [fetchTasks])
+  }, [qc])
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -186,14 +160,8 @@ export default function HomePage() {
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
               <p className="text-zinc-500">{fetchError}</p>
-              <button
-                onClick={fetchTasks}
-                className="text-sm text-blue-400 underline-offset-2 hover:underline"
-              >
-                Retry
-              </button>
             </div>
-          ) : tasks.length === 0 && !loading ? (
+          ) : tasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
               <p className="text-zinc-500">No tasks yet.</p>
               <button
@@ -223,11 +191,11 @@ export default function HomePage() {
                 <span>{tasks.length} of {total} task{total === 1 ? '' : 's'}</span>
                 {hasMore && (
                   <button
-                    onClick={loadMore}
-                    disabled={loading}
+                    onClick={() => loadMore()}
+                    disabled={isFetchingMore}
                     className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {loading ? 'Loading…' : 'Load more'}
+                    {isFetchingMore ? 'Loading…' : 'Load more'}
                   </button>
                 )}
               </div>
