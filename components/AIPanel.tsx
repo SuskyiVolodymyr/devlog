@@ -385,11 +385,11 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
           onClick={() => { if (loading === null) setPrioritizeModalOpen(false) }}
         >
           <div
-            className="flex w-full max-w-lg flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
+            <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-5 py-3">
               <div className="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
@@ -409,39 +409,42 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
               )}
             </div>
 
-            {/* Streaming body */}
-            <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
-              {displayText ? (
-                renderMarkdown(displayText)
-              ) : (
-                <div className="flex items-center gap-2 text-zinc-500">
-                  <svg className="h-4 w-4 animate-spin text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Analyzing tasks…
+            {/* Scrollable body */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {/* Streaming body */}
+              <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
+                {displayText ? (
+                  renderMarkdown(displayText)
+                ) : (
+                  <div className="flex items-center gap-2 text-zinc-500">
+                    <svg className="h-4 w-4 animate-spin text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Analyzing tasks…
+                  </div>
+                )}
+              </div>
+
+              {/* Task card — appears after streaming completes */}
+              {taskRef && (
+                <div className="mx-5 mb-4 flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800/60 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">Start here</p>
+                    <p className="truncate text-sm font-medium text-zinc-100">{taskRef.title}</p>
+                  </div>
+                  <button
+                    onClick={() => { router.push(`/tasks/${taskRef!.id}`); setPrioritizeModalOpen(false) }}
+                    className="ml-4 shrink-0 rounded-lg border border-zinc-600 bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600 hover:text-white"
+                  >
+                    Open →
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Task card — appears after streaming completes */}
-            {taskRef && (
-              <div className="mx-5 mb-4 flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800/60 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">Start here</p>
-                  <p className="truncate text-sm font-medium text-zinc-100">{taskRef.title}</p>
-                </div>
-                <button
-                  onClick={() => { router.push(`/tasks/${taskRef!.id}`); setPrioritizeModalOpen(false) }}
-                  className="ml-4 shrink-0 rounded-lg border border-zinc-600 bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600 hover:text-white"
-                >
-                  Open →
-                </button>
-              </div>
-            )}
-
             {/* Footer */}
-            <div className="flex justify-end border-t border-zinc-800 px-5 py-3">
+            <div className="flex shrink-0 justify-end border-t border-zinc-800 px-5 py-3">
               <button
                 onClick={() => setPrioritizeModalOpen(false)}
                 disabled={loading !== null}
@@ -499,11 +502,11 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
           onClick={() => { if (loading === null) setBacklogModalOpen(false) }}
         >
           <div
-            className="flex w-full max-w-lg flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
+            <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-5 py-3">
               <div className="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
@@ -524,41 +527,44 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
               )}
             </div>
 
-            {/* Streaming body */}
-            <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
-              {displayText ? (
-                renderMarkdown(displayText)
-              ) : (
-                <div className="flex items-center gap-2 text-zinc-500">
-                  <svg className="h-4 w-4 animate-spin text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Reviewing backlog…
+            {/* Scrollable body */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {/* Streaming body */}
+              <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
+                {displayText ? (
+                  renderMarkdown(displayText)
+                ) : (
+                  <div className="flex items-center gap-2 text-zinc-500">
+                    <svg className="h-4 w-4 animate-spin text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Reviewing backlog…
+                  </div>
+                )}
+              </div>
+
+              {/* Task chips — appear after streaming completes */}
+              {taskRefs.length > 0 && (
+                <div className="mx-5 mb-4 flex flex-col gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Needs attention</p>
+                  <div className="flex flex-wrap gap-2">
+                    {taskRefs.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => { router.push(`/tasks/${t.id}`); setBacklogModalOpen(false) }}
+                        className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-700 hover:text-white"
+                      >
+                        {t.title} →
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Task chips — appear after streaming completes */}
-            {taskRefs.length > 0 && (
-              <div className="mx-5 mb-4 flex flex-col gap-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Needs attention</p>
-                <div className="flex flex-wrap gap-2">
-                  {taskRefs.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => { router.push(`/tasks/${t.id}`); setBacklogModalOpen(false) }}
-                      className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-700 hover:text-white"
-                    >
-                      {t.title} →
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Footer */}
-            <div className="flex justify-end border-t border-zinc-800 px-5 py-3">
+            <div className="flex shrink-0 justify-end border-t border-zinc-800 px-5 py-3">
               <button
                 onClick={() => setBacklogModalOpen(false)}
                 disabled={loading !== null}
