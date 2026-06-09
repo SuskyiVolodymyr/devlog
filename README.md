@@ -35,12 +35,15 @@ The only external dependency. All AI features are live once the key is set.
 Three agents, all using Claude's tool-use API — genuinely multi-step, not single prompts.
 
 | Agent | Where | What it does |
-|-------|-------|______________|
+|-------|-------|--------------|
 | **Prioritize** | Main page AI panel | Fetches all tasks, reasons about priority + age + in-progress state, recommends where to start the day with a written explanation |
+| **Backlog Review** | Main page AI panel | Scans all open tasks for quality issues: vague descriptions, high-priority items with no decomposition, stuck in-progress tasks, forgotten to-dos. Returns a concise list of flagged tasks with specific improvement suggestions and a summary health score. |
 | **Decompose** | Task detail AI panel | Reads the task; if the description is vague asks a clarifying question first. Otherwise creates 3–6 subtasks in the DB and refreshes the list automatically. |
 | **Status Update** | Task detail AI panel | Reads the task and its subtasks, drafts a Slack-style async update in flowing prose |
 
 Each agent calls tools (DB reads, task creation), receives results, reasons further, and decides whether to call more tools or return — the classic agentic loop.
+
+**Why Backlog Review matters for engineering teams**: Engineers routinely lose sprint planning time to poorly defined tasks — tickets with one-line descriptions, high-priority items nobody decomposed, in-progress tasks that have silently stalled. Catching these before the planning meeting is the job of a senior engineer doing "backlog grooming," a 30–60 minute manual process that happens every 1–2 weeks. The Backlog Review agent does this in seconds: it reads every open task, selectively fetches subtask state for complex items, applies consistent quality criteria, and surfaces only the tasks that genuinely need attention. The result is actionable rather than advisory — each flagged task comes with a specific fix, not just a flag.
 
 ## Architecture
 
@@ -97,6 +100,7 @@ Each agent only defines its system prompt and which tools it can use. The loop i
 | PUT | `/api/tasks/[id]` | Update task |
 | DELETE | `/api/tasks/[id]` | Delete task (cascades to subtasks) |
 | POST | `/api/ai/prioritize` | Run prioritization agent |
+| POST | `/api/ai/backlog-review` | Run backlog review agent |
 | POST | `/api/ai/decompose/[id]` | Run decomposition agent — body: `{ clarification? }` |
 | POST | `/api/ai/status-update/[id]` | Run status update agent — body: `{ notes? }` |
 
