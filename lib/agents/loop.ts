@@ -8,16 +8,18 @@ export async function runAgentLoop(
   initialMessages: Anthropic.MessageParam[],
   tools: Anthropic.Tool[],
   executeTool: (name: string, input: Record<string, unknown>) => Promise<unknown>,
-  maxIterations = 10
+  options: { maxIterations?: number; model?: string; maxTokens?: number } = {}
 ): Promise<string> {
+  const { maxIterations = 10, model = CLAUDE_MODEL, maxTokens = 1024 } = options
   const messages: Anthropic.MessageParam[] = [...initialMessages]
 
   for (let i = 0; i < maxIterations; i++) {
     const response = await client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 4096,
+      model,
+      max_tokens: maxTokens,
       system: systemPrompt,
-      tools,
+      // omit tools key entirely when empty — cleaner request, avoids empty-array edge cases
+      ...(tools.length > 0 ? { tools } : {}),
       messages,
     })
 
@@ -37,7 +39,7 @@ export async function runAgentLoop(
       // Append assistant turn with all content blocks
       messages.push({ role: 'assistant', content: response.content })
 
-      // Execute all tool calls and collect results
+      // Execute all tool calls in parallel, each with a 30s timeout
       const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
         toolUseBlocks.map(async (block) => {
           const timeoutPromise = new Promise<never>((_, reject) =>

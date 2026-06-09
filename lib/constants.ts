@@ -3,7 +3,13 @@ import type { TaskStatus, TaskPriority } from '@/lib/types'
 export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'in-progress', 'done']
 export const TASK_PRIORITIES: readonly TaskPriority[] = ['low', 'medium', 'high']
 
-export const CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? 'claude-opus-4-8'
+// Default fallback — override via env to use a different model globally
+export const CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5'
+// For agents that need strong reasoning (decompose, prioritize)
+export const CLAUDE_MODEL_CAPABLE = process.env.CLAUDE_MODEL_CAPABLE ?? 'claude-sonnet-4-5'
+// For simple generation tasks (status update)
+export const CLAUDE_MODEL_FAST = process.env.CLAUDE_MODEL_FAST ?? 'claude-haiku-4-5'
+
 export const DB_PATH = process.env.DB_PATH ?? './devlog.db'
 
 export type AIActionKey = 'prioritize' | 'decompose' | 'status-update'
