@@ -15,7 +15,7 @@ export default function HomePage() {
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
 
-  const { tasks, total, hasMore, loadMore, loading, error: fetchError, refetch: fetchTasks } = useTaskList(filters)
+  const { tasks, setTasks, total, hasMore, loadMore, loading, error: fetchError, refetch: fetchTasks } = useTaskList(filters)
 
   // Fetch subtask counts for each top-level task (N+1 trade-off, bounded by page size)
   // Uses limit=1 so only the total is returned, not task bodies
@@ -109,15 +109,23 @@ export default function HomePage() {
   }
 
   async function handleStatusChange(id: string, status: TaskStatus) {
+    const previous = tasks.find((t) => t.id === id)?.status
+    if (previous === undefined) return
+    // Optimistic update — flip the badge immediately
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status } : t))
     try {
       const res = await fetch(`/api/tasks/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       })
-      if (!res.ok) setMutationError('Failed to update status')
-      else fetchTasks()
+      if (!res.ok) {
+        // Revert on failure
+        setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: previous } : t))
+        setMutationError('Failed to update status')
+      }
     } catch {
+      setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: previous } : t))
       setMutationError('Network error. Please try again.')
     }
   }

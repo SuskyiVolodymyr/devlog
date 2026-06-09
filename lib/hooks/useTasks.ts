@@ -54,7 +54,7 @@ export function useTaskList(filters: TaskFilters) {
 
   const hasMore = tasks.length < total
 
-  return { tasks, total, hasMore, loadMore, loading, error, refetch }
+  return { tasks, setTasks, total, hasMore, loadMore, loading, error, refetch }
 }
 
 export function useTask(id: string) {

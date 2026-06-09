@@ -67,6 +67,11 @@ export default function TaskDetailPage() {
   }
 
   async function handleStatusChange(taskId: string, status: TaskStatus) {
+    // Optimistic update
+    const previousStatus = taskId === id ? task?.status : subtasks.find((s) => s.id === taskId)?.status
+    if (taskId === id) {
+      setTask((prev) => prev ? { ...prev, status } : prev)
+    }
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
@@ -74,15 +79,16 @@ export default function TaskDetailPage() {
         body: JSON.stringify({ status }),
       })
       if (!res.ok) {
+        // Revert on failure
+        if (taskId === id) setTask((prev) => prev ? { ...prev, status: previousStatus ?? prev.status } : prev)
+        else fetchSubtasks()
         setMutationError('Failed to update status')
         return
       }
-      if (taskId === id) {
-        setTask((prev) => prev ? { ...prev, status } : prev)
-      } else {
-        fetchSubtasks()
-      }
+      if (taskId !== id) fetchSubtasks()
     } catch {
+      if (taskId === id) setTask((prev) => prev ? { ...prev, status: previousStatus ?? prev.status } : prev)
+      else fetchSubtasks()
       setMutationError('Network error. Please try again.')
     }
   }
