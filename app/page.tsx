@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTaskList } from '@/lib/hooks/useTasks'
 import type { Task, TaskPage, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import { apiCreateTask, apiUpdateTask, apiDeleteTask, parseApiError } from '@/lib/api-client'
 import TaskCard from '@/components/TaskCard'
 import FilterBar from '@/components/FilterBar'
 import TaskForm from '@/components/TaskForm'
@@ -55,20 +56,11 @@ export default function HomePage() {
   const handleCreate = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     setMutationError(null)
     try {
-      const res = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to create task' })) as { error?: string }
-        setMutationError(err.error ?? 'Failed to create task')
-        return
-      }
+      await apiCreateTask(input as CreateTaskInput)
       setShowForm(false)
       fetchTasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to create task')
     }
   }, [fetchTasks])
 
@@ -76,35 +68,22 @@ export default function HomePage() {
     if (!editingTask) return
     setMutationError(null)
     try {
-      const res = await fetch(`/api/tasks/${editingTask.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to update task' })) as { error?: string }
-        setMutationError(err.error ?? 'Failed to update task')
-        return
-      }
+      await apiUpdateTask(editingTask.id, input as UpdateTaskInput)
       setEditingTask(undefined)
       setShowForm(false)
       fetchTasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to update task')
     }
   }, [editingTask, fetchTasks])
 
   const handleDelete = useCallback(async (id: string) => {
     setMutationError(null)
     try {
-      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        setMutationError('Failed to delete task')
-        return
-      }
+      await apiDeleteTask(id)
       fetchTasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to delete task')
     }
   }, [fetchTasks])
 
@@ -113,18 +92,10 @@ export default function HomePage() {
     if (previous === undefined) return
     setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status } : t))
     try {
-      const res = await fetch(`/api/tasks/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      if (!res.ok) {
-        setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: previous } : t))
-        setMutationError('Failed to update status')
-      }
+      await apiUpdateTask(id, { status })
     } catch {
       setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: previous } : t))
-      setMutationError('Network error. Please try again.')
+      setMutationError('Failed to update status')
     }
   }, [tasks, setTasks])
 

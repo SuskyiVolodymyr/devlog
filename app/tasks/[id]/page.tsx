@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useTask, useSubtasks } from '@/lib/hooks/useTasks'
 import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import { apiCreateTask, apiUpdateTask, apiDeleteTask } from '@/lib/api-client'
 import StatusBadge from '@/components/StatusBadge'
 import PriorityBadge from '@/components/PriorityBadge'
 import TaskCard from '@/components/TaskCard'
@@ -51,65 +52,34 @@ export default function TaskDetailPage() {
   const handleNotesBlur = useCallback(async () => {
     if (!task || notesValue === task.notes) return
     try {
-      const res = await fetch(`/api/tasks/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: notesValue }),
-      })
-      if (!res.ok) {
-        setMutationError('Failed to save notes')
-        return
-      }
+      await apiUpdateTask(id, { notes: notesValue })
       setTask((prev) => prev ? { ...prev, notes: notesValue } : prev)
     } catch {
-      setMutationError('Network error. Failed to save notes.')
+      setMutationError('Failed to save notes')
     }
   }, [id, task, notesValue, setTask])
 
   const handleStatusChange = useCallback(async (taskId: string, status: TaskStatus) => {
-    // Optimistic update
     const previousStatus = taskId === id ? task?.status : subtasks.find((s) => s.id === taskId)?.status
-    if (taskId === id) {
-      setTask((prev) => prev ? { ...prev, status } : prev)
-    }
+    if (taskId === id) setTask((prev) => prev ? { ...prev, status } : prev)
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      if (!res.ok) {
-        // Revert on failure
-        if (taskId === id) setTask((prev) => prev ? { ...prev, status: previousStatus ?? prev.status } : prev)
-        else fetchSubtasks()
-        setMutationError('Failed to update status')
-        return
-      }
+      await apiUpdateTask(taskId, { status })
       if (taskId !== id) fetchSubtasks()
     } catch {
       if (taskId === id) setTask((prev) => prev ? { ...prev, status: previousStatus ?? prev.status } : prev)
       else fetchSubtasks()
-      setMutationError('Network error. Please try again.')
+      setMutationError('Failed to update status')
     }
   }, [id, task, subtasks, setTask, fetchSubtasks])
 
   const handleCreateSubtask = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     setMutationError(null)
     try {
-      const res = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...input, parentId: id }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to create subtask' })) as { error?: string }
-        setMutationError(err.error ?? 'Failed to create subtask')
-        return
-      }
+      await apiCreateTask({ ...(input as CreateTaskInput), parentId: id })
       setShowSubtaskForm(false)
       fetchSubtasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to create subtask')
     }
   }, [id, fetchSubtasks])
 
@@ -117,35 +87,22 @@ export default function TaskDetailPage() {
     if (!editingSubtask) return
     setMutationError(null)
     try {
-      const res = await fetch(`/api/tasks/${editingSubtask.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to update subtask' })) as { error?: string }
-        setMutationError(err.error ?? 'Failed to update subtask')
-        return
-      }
+      await apiUpdateTask(editingSubtask.id, input as UpdateTaskInput)
       setEditingSubtask(undefined)
       setShowSubtaskForm(false)
       fetchSubtasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to update subtask')
     }
   }, [editingSubtask, fetchSubtasks])
 
   const handleDeleteSubtask = useCallback(async (subtaskId: string) => {
     setMutationError(null)
     try {
-      const res = await fetch(`/api/tasks/${subtaskId}`, { method: 'DELETE' })
-      if (!res.ok) {
-        setMutationError('Failed to delete subtask')
-        return
-      }
+      await apiDeleteTask(subtaskId)
       fetchSubtasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to delete subtask')
     }
   }, [fetchSubtasks])
 

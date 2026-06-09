@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import type { Task, TaskFilters, TaskPage } from '@/lib/types'
+import type { Task, TaskFilters } from '@/lib/types'
+import { apiGetTasks, apiGetTask } from '@/lib/api-client'
 
 const PAGE_SIZE = 50
 
@@ -23,9 +24,7 @@ export function useTaskList(filters: TaskFilters) {
     params.set('page', String(pageNum))
     params.set('limit', String(PAGE_SIZE))
     try {
-      const res = await fetch(`/api/tasks?${params}`)
-      if (!res.ok) throw new Error('Failed to fetch tasks')
-      const data = await res.json() as TaskPage
+      const data = await apiGetTasks(params)
       setTasks((prev) => append ? [...prev, ...data.tasks] : data.tasks)
       setTotal(data.total)
     } catch (err) {
@@ -67,10 +66,11 @@ export function useTask(id: string) {
     setLoading(true)
     setError(null)
     try {
+      // Check 404 before using the typed wrapper
       const res = await fetch(`/api/tasks/${id}`)
       if (res.status === 404) { setNotFound(true); return }
       if (!res.ok) throw new Error('Failed to fetch task')
-      setTask(await res.json() as Task)
+      setTask(await apiGetTask(id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch task')
     } finally {
@@ -91,11 +91,10 @@ export function useSubtasks(parentId: string) {
   const refetch = useCallback(async () => {
     setLoading(true)
     setError(null)
+    const params = new URLSearchParams({ parentId, limit: '100' })
     try {
       // limit=100: a task won't realistically have >100 subtasks
-      const res = await fetch(`/api/tasks?parentId=${parentId}&limit=100`)
-      if (!res.ok) throw new Error('Failed to fetch subtasks')
-      const data = await res.json() as TaskPage
+      const data = await apiGetTasks(params)
       setSubtasks(data.tasks)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch subtasks')
