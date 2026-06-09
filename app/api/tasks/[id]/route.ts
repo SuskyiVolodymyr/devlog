@@ -1,5 +1,6 @@
 import { type NextRequest } from 'next/server'
 import { getTask, updateTask, deleteTask } from '@/lib/db'
+import { TASK_STATUSES, TASK_PRIORITIES } from '@/lib/constants'
 
 export async function GET(
   _request: NextRequest,
@@ -24,6 +25,12 @@ export async function PUT(
     const body = await request.json()
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       return Response.json({ error: 'Invalid request body' }, { status: 400 })
+    }
+    if (body.status !== undefined && !TASK_STATUSES.includes(body.status)) {
+      return Response.json({ error: 'Invalid status' }, { status: 400 })
+    }
+    if (body.priority !== undefined && !TASK_PRIORITIES.includes(body.priority)) {
+      return Response.json({ error: 'Invalid priority' }, { status: 400 })
     }
     const task = updateTask(id, body)
     if (!task) return Response.json({ error: 'Task not found' }, { status: 404 })
