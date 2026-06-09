@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { AI_ACTIONS, buildAgentUrl, type AIActionKey } from '@/lib/constants'
 
 type ActionKey = AIActionKey
@@ -16,11 +16,27 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   const [activeAction, setActiveAction] = useState<ActionKey | null>(null)
   const [clarification, setClarification] = useState('')
   const [awaitingClarification, setAwaitingClarification] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
   const abortRef = useRef<AbortController | null>(null)
+  const clarificationRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     return () => { abortRef.current?.abort() }
   }, [])
+
+  // Tick elapsed seconds while a request is in flight
+  useEffect(() => {
+    if (loading === null) { setElapsed(0); return }
+    const interval = setInterval(() => setElapsed((s) => s + 1), 1000)
+    return () => clearInterval(interval)
+  }, [loading])
+
+  // Auto-focus clarification textarea when it appears
+  useEffect(() => {
+    if (awaitingClarification && !loading) {
+      clarificationRef.current?.focus()
+    }
+  }, [awaitingClarification, loading])
 
   async function callAgent(action: ActionKey, body?: Record<string, string>) {
     abortRef.current?.abort()
@@ -184,7 +200,10 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Running {AI_ACTIONS.find((a) => a.key === activeAction)?.label}…
+              <span>
+                Running {AI_ACTIONS.find((a) => a.key === activeAction)?.label}…
+                {elapsed > 3 && <span className="ml-1 tabular-nums text-zinc-500">{elapsed}s</span>}
+              </span>
             </div>
           )}
 
@@ -200,6 +219,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
           {awaitingClarification && loading === null && (
             <div className="flex flex-col gap-2">
               <textarea
+                ref={clarificationRef}
                 value={clarification}
                 onChange={(e) => setClarification(e.target.value)}
                 placeholder="Your answer…"

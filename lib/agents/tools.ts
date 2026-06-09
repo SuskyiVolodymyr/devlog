@@ -93,6 +93,12 @@ export const createTasksBatchTool: Anthropic.Tool = {
   },
 }
 
+function requireString(input: Record<string, unknown>, field: string): string {
+  const val = input[field]
+  if (typeof val !== 'string') throw new Error(`Tool input missing required string field: ${field}`)
+  return val
+}
+
 export async function executeDbTool(
   name: string,
   input: Record<string, unknown>
@@ -101,25 +107,36 @@ export async function executeDbTool(
     case 'get_all_tasks':
       return getTasks()
 
-    case 'get_task': {
-      const id = input.id as string
-      return getTask(id)
-    }
+    case 'get_task':
+      return getTask(requireString(input, 'id'))
 
-    case 'get_subtasks': {
-      const parentId = input.parentId as string
-      return getSubtasks(parentId)
-    }
+    case 'get_subtasks':
+      return getSubtasks(requireString(input, 'parentId'))
 
-    case 'create_task':
-      return createTask(input as unknown as CreateTaskInput)
+    case 'create_task': {
+      const taskInput: CreateTaskInput = {
+        title: requireString(input, 'title'),
+        description: typeof input.description === 'string' ? input.description : undefined,
+        status: typeof input.status === 'string' ? input.status as CreateTaskInput['status'] : undefined,
+        priority: typeof input.priority === 'string' ? input.priority as CreateTaskInput['priority'] : undefined,
+        parentId: typeof input.parentId === 'string' ? input.parentId : undefined,
+        notes: typeof input.notes === 'string' ? input.notes : undefined,
+      }
+      return createTask(taskInput)
+    }
 
     case 'create_tasks_batch': {
-      const { parentId, tasks } = input as {
-        parentId: string
-        tasks: Array<{ title: string; description: string }>
-      }
-      return tasks.map((t) => createTask({ ...t, parentId }))
+      const parentId = requireString(input, 'parentId')
+      if (!Array.isArray(input.tasks)) throw new Error('create_tasks_batch: tasks must be an array')
+      return (input.tasks as unknown[])
+        .filter((t): t is { title: string; description?: string } =>
+          typeof t === 'object' && t !== null && typeof (t as Record<string, unknown>).title === 'string'
+        )
+        .map((t) => createTask({
+          title: t.title,
+          description: typeof t.description === 'string' ? t.description : undefined,
+          parentId,
+        }))
     }
 
     default:

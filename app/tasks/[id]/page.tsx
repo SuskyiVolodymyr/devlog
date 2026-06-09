@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useTask, useSubtasks } from '@/lib/hooks/useTasks'
 import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import { apiCreateTask, apiUpdateTask, apiDeleteTask } from '@/lib/api-client'
 import StatusBadge from '@/components/StatusBadge'
 import PriorityBadge from '@/components/PriorityBadge'
 import TaskCard from '@/components/TaskCard'
@@ -48,110 +49,72 @@ export default function TaskDetailPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [aiPanelOpen])
 
-  async function handleNotesBlur() {
+  const handleNotesBlur = useCallback(async () => {
     if (!task || notesValue === task.notes) return
     try {
-      const res = await fetch(`/api/tasks/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: notesValue }),
-      })
-      if (!res.ok) {
-        setMutationError('Failed to save notes')
-        return
-      }
+      await apiUpdateTask(id, { notes: notesValue })
       setTask((prev) => prev ? { ...prev, notes: notesValue } : prev)
     } catch {
-      setMutationError('Network error. Failed to save notes.')
+      setMutationError('Failed to save notes')
     }
-  }
+  }, [id, task, notesValue, setTask])
 
-  async function handleStatusChange(taskId: string, status: TaskStatus) {
+  const handleStatusChange = useCallback(async (taskId: string, status: TaskStatus) => {
+    const previousStatus = taskId === id ? task?.status : subtasks.find((s) => s.id === taskId)?.status
+    if (taskId === id) setTask((prev) => prev ? { ...prev, status } : prev)
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      if (!res.ok) {
-        setMutationError('Failed to update status')
-        return
-      }
-      if (taskId === id) {
-        setTask((prev) => prev ? { ...prev, status } : prev)
-      } else {
-        fetchSubtasks()
-      }
+      await apiUpdateTask(taskId, { status })
+      if (taskId !== id) fetchSubtasks()
     } catch {
-      setMutationError('Network error. Please try again.')
+      if (taskId === id) setTask((prev) => prev ? { ...prev, status: previousStatus ?? prev.status } : prev)
+      else fetchSubtasks()
+      setMutationError('Failed to update status')
     }
-  }
+  }, [id, task, subtasks, setTask, fetchSubtasks])
 
-  async function handleCreateSubtask(input: CreateTaskInput | UpdateTaskInput) {
+  const handleCreateSubtask = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     setMutationError(null)
     try {
-      const res = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...input, parentId: id }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to create subtask' })) as { error?: string }
-        setMutationError(err.error ?? 'Failed to create subtask')
-        return
-      }
+      await apiCreateTask({ ...(input as CreateTaskInput), parentId: id })
       setShowSubtaskForm(false)
       fetchSubtasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to create subtask')
     }
-  }
+  }, [id, fetchSubtasks])
 
-  async function handleUpdateSubtask(input: CreateTaskInput | UpdateTaskInput) {
+  const handleUpdateSubtask = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     if (!editingSubtask) return
     setMutationError(null)
     try {
-      const res = await fetch(`/api/tasks/${editingSubtask.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to update subtask' })) as { error?: string }
-        setMutationError(err.error ?? 'Failed to update subtask')
-        return
-      }
+      await apiUpdateTask(editingSubtask.id, input as UpdateTaskInput)
       setEditingSubtask(undefined)
       setShowSubtaskForm(false)
       fetchSubtasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to update subtask')
     }
-  }
+  }, [editingSubtask, fetchSubtasks])
 
-  async function handleDeleteSubtask(subtaskId: string) {
+  const handleDeleteSubtask = useCallback(async (subtaskId: string) => {
     setMutationError(null)
     try {
-      const res = await fetch(`/api/tasks/${subtaskId}`, { method: 'DELETE' })
-      if (!res.ok) {
-        setMutationError('Failed to delete subtask')
-        return
-      }
+      await apiDeleteTask(subtaskId)
       fetchSubtasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to delete subtask')
     }
-  }
+  }, [fetchSubtasks])
 
-  function openEditSubtask(t: Task) {
+  const openEditSubtask = useCallback((t: Task) => {
     setEditingSubtask(t)
     setShowSubtaskForm(true)
-  }
+  }, [])
 
-  function closeSubtaskForm() {
+  const closeSubtaskForm = useCallback(() => {
     setShowSubtaskForm(false)
     setEditingSubtask(undefined)
-  }
+  }, [])
 
   if (loading) {
     return (
@@ -294,7 +257,7 @@ export default function TaskDetailPage() {
           onClick={() => setAiPanelOpen(false)}
         >
           <div
-            className="absolute right-0 top-0 h-full w-80 overflow-y-auto bg-zinc-900 p-4 shadow-2xl"
+            className="absolute right-0 top-0 h-full w-full overflow-y-auto bg-zinc-900 p-4 shadow-2xl sm:w-80"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex justify-end">

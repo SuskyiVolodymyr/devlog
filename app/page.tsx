@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTaskList } from '@/lib/hooks/useTasks'
-import type { Task, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import type { Task, TaskPage, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import { apiCreateTask, apiUpdateTask, apiDeleteTask, parseApiError } from '@/lib/api-client'
 import TaskCard from '@/components/TaskCard'
 import FilterBar from '@/components/FilterBar'
 import TaskForm from '@/components/TaskForm'
@@ -15,19 +16,20 @@ export default function HomePage() {
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
 
-  const { tasks, loading, error: fetchError, refetch: fetchTasks } = useTaskList(filters)
+  const { tasks, setTasks, total, hasMore, loadMore, loading, error: fetchError, refetch: fetchTasks } = useTaskList(filters)
 
-  // Fetch subtask counts for each top-level task (documented N+1 trade-off)
+  // Fetch subtask counts for each top-level task (N+1 trade-off, bounded by page size)
+  // Uses limit=1 so only the total is returned, not task bodies
   const [subtaskCounts, setSubtaskCounts] = useState<Record<string, number>>({})
   const fetchSubtaskCounts = useCallback(async (taskList: Task[]) => {
     const counts: Record<string, number> = {}
     await Promise.all(
       taskList.map(async (task) => {
         try {
-          const res = await fetch(`/api/tasks?parentId=${task.id}`)
+          const res = await fetch(`/api/tasks?parentId=${task.id}&limit=1`)
           if (res.ok) {
-            const subs = await res.json() as Task[]
-            counts[task.id] = subs.length
+            const data = await res.json() as TaskPage
+            counts[task.id] = data.total
           }
         } catch {
           // ignore individual failures
@@ -51,85 +53,61 @@ export default function HomePage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [aiPanelOpen])
 
-  async function handleCreate(input: CreateTaskInput | UpdateTaskInput) {
+  const handleCreate = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     setMutationError(null)
     try {
-      const res = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to create task' })) as { error?: string }
-        setMutationError(err.error ?? 'Failed to create task')
-        return
-      }
+      await apiCreateTask(input as CreateTaskInput)
       setShowForm(false)
       fetchTasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to create task')
     }
-  }
+  }, [fetchTasks])
 
-  async function handleUpdate(input: CreateTaskInput | UpdateTaskInput) {
+  const handleUpdate = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
     if (!editingTask) return
     setMutationError(null)
     try {
-      const res = await fetch(`/api/tasks/${editingTask.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to update task' })) as { error?: string }
-        setMutationError(err.error ?? 'Failed to update task')
-        return
-      }
+      await apiUpdateTask(editingTask.id, input as UpdateTaskInput)
       setEditingTask(undefined)
       setShowForm(false)
       fetchTasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to update task')
     }
-  }
+  }, [editingTask, fetchTasks])
 
-  async function handleDelete(id: string) {
+  const handleDelete = useCallback(async (id: string) => {
     setMutationError(null)
     try {
-      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        setMutationError('Failed to delete task')
-        return
-      }
+      await apiDeleteTask(id)
       fetchTasks()
-    } catch {
-      setMutationError('Network error. Please try again.')
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Failed to delete task')
     }
-  }
+  }, [fetchTasks])
 
-  async function handleStatusChange(id: string, status: TaskStatus) {
+  const handleStatusChange = useCallback(async (id: string, status: TaskStatus) => {
+    const previous = tasks.find((t) => t.id === id)?.status
+    if (previous === undefined) return
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status } : t))
     try {
-      const res = await fetch(`/api/tasks/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      if (!res.ok) setMutationError('Failed to update status')
-      else fetchTasks()
+      await apiUpdateTask(id, { status })
     } catch {
-      setMutationError('Network error. Please try again.')
+      setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: previous } : t))
+      setMutationError('Failed to update status')
     }
-  }
+  }, [tasks, setTasks])
 
-  function openEdit(task: Task) {
+  const openEdit = useCallback((task: Task) => {
     setEditingTask(task)
     setShowForm(true)
-  }
+  }, [])
 
-  function closeForm() {
+  const closeForm = useCallback(() => {
     setShowForm(false)
     setEditingTask(undefined)
-  }
+  }, [])
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -170,8 +148,9 @@ export default function HomePage() {
           <FilterBar filters={filters} onChange={setFilters} />
 
           {mutationError && (
-            <div role="alert" className="rounded-lg border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
-              {mutationError}
+            <div role="alert" className="flex items-center justify-between rounded-lg border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
+              <span>{mutationError}</span>
+              <button onClick={() => setMutationError(null)} className="ml-3 text-xs underline underline-offset-2 hover:no-underline">Dismiss</button>
             </div>
           )}
 
@@ -203,17 +182,33 @@ export default function HomePage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {tasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  subtaskCount={subtaskCounts[task.id] ?? 0}
-                  onEdit={openEdit}
-                  onDelete={handleDelete}
-                  onStatusChange={handleStatusChange}
-                />
-              ))}
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    subtaskCount={subtaskCounts[task.id] ?? 0}
+                    onEdit={openEdit}
+                    onDelete={handleDelete}
+                    onStatusChange={handleStatusChange}
+                  />
+                ))}
+              </div>
+
+              {/* Pagination footer */}
+              <div className="flex items-center justify-between text-sm text-zinc-500">
+                <span>{tasks.length} of {total} task{total === 1 ? '' : 's'}</span>
+                {hasMore && (
+                  <button
+                    onClick={loadMore}
+                    disabled={loading}
+                    className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {loading ? 'Loading…' : 'Load more'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </main>
@@ -233,7 +228,7 @@ export default function HomePage() {
           onClick={() => setAiPanelOpen(false)}
         >
           <div
-            className="absolute right-0 top-0 h-full w-80 overflow-y-auto bg-zinc-900 p-4 shadow-2xl"
+            className="absolute right-0 top-0 h-full w-full overflow-y-auto bg-zinc-900 p-4 shadow-2xl sm:w-80"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex justify-end">

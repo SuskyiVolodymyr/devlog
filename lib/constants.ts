@@ -18,17 +18,20 @@ export interface AIAction {
   key: AIActionKey
   label: string
   description: string
+  /** true = only shown when viewing a specific task */
   taskOnly: boolean
+  /** Route segment after /api/ai/. Task-scoped actions append /:taskId automatically. */
+  route: string
 }
 
 export const AI_ACTIONS: readonly AIAction[] = [
-  { key: 'prioritize', label: 'Prioritize', description: 'Recommend where to start based on all tasks', taskOnly: false },
-  { key: 'decompose', label: 'Decompose', description: 'Break this task into subtasks', taskOnly: true },
-  { key: 'status-update', label: 'Status Update', description: 'Draft a Slack-style update for this task', taskOnly: true },
+  { key: 'prioritize',   label: 'Prioritize',    description: 'Recommend where to start based on all tasks', taskOnly: false, route: 'prioritize'    },
+  { key: 'decompose',    label: 'Decompose',      description: 'Break this task into subtasks',               taskOnly: true,  route: 'decompose'     },
+  { key: 'status-update', label: 'Status Update', description: 'Draft a Slack-style update for this task',    taskOnly: true,  route: 'status-update' },
 ]
 
 export function buildAgentUrl(action: AIActionKey, taskId?: string): string {
-  if (action === 'prioritize') return '/api/ai/prioritize'
-  if (action === 'decompose') return `/api/ai/decompose/${taskId}`
-  return `/api/ai/status-update/${taskId}`
+  const def = AI_ACTIONS.find((a) => a.key === action)
+  if (!def) throw new Error(`Unknown AI action: ${action}`)
+  return def.taskOnly ? `/api/ai/${def.route}/${taskId}` : `/api/ai/${def.route}`
 }
