@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { anthropic } from '@/lib/anthropic'
 import { CLAUDE_MODEL } from '@/lib/constants'
-
-const client = new Anthropic()
 
 export async function runAgentLoop(
   systemPrompt: string,
@@ -19,7 +18,7 @@ export async function runAgentLoop(
   const messages: Anthropic.MessageParam[] = [...initialMessages]
 
   for (let i = 0; i < maxIterations; i++) {
-    const stream = client.messages.stream({
+    const stream = anthropic.messages.stream({
       model,
       max_tokens: maxTokens,
       system: systemPrompt,
