@@ -107,7 +107,7 @@ Each agent only defines its system prompt and which tools it can use. The loop i
 | Framework | Next.js 16.2, App Router, TypeScript, Turbopack |
 | Styling | Tailwind CSS |
 | Storage | SQLite via `better-sqlite3` |
-| AI | Anthropic Claude API (`claude-opus-4-8`) |
+| AI | Anthropic Claude API (`claude-sonnet-4-6` / `claude-haiku-4-5`) |
 | State | React `useState` / `useEffect` — no external library |
 
 ## Deliberate trade-offs
