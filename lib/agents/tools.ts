@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { getTasks, getTask, getSubtasks, createTask } from '@/lib/db'
+import type { CreateTaskInput } from '@/lib/types'
 
 export const getTasksTool: Anthropic.Tool = {
   name: 'get_all_tasks',
@@ -43,7 +44,7 @@ export const getSubtasksTool: Anthropic.Tool = {
 
 export const createTaskTool: Anthropic.Tool = {
   name: 'create_task',
-  description: 'Create a new task or subtask in the database.',
+  description: 'Create a single task or subtask in the database.',
   input_schema: {
     type: 'object',
     properties: {
@@ -61,6 +62,34 @@ export const createTaskTool: Anthropic.Tool = {
       },
     },
     required: ['title', 'description'],
+  },
+}
+
+// Prefer this over create_task when creating multiple subtasks — one call instead of N
+export const createTasksBatchTool: Anthropic.Tool = {
+  name: 'create_tasks_batch',
+  description: 'Create multiple subtasks at once for a parent task. Use this instead of calling create_task repeatedly.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      parentId: {
+        type: 'string',
+        description: 'The parent task ID all subtasks belong to.',
+      },
+      tasks: {
+        type: 'array',
+        description: 'All subtasks to create in one shot.',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Short, actionable title.' },
+            description: { type: 'string', description: 'What needs to be done.' },
+          },
+          required: ['title', 'description'],
+        },
+      },
+    },
+    required: ['parentId', 'tasks'],
   },
 }
 
@@ -83,7 +112,15 @@ export async function executeDbTool(
     }
 
     case 'create_task':
-      return createTask(input as unknown as import('@/lib/types').CreateTaskInput)
+      return createTask(input as unknown as CreateTaskInput)
+
+    case 'create_tasks_batch': {
+      const { parentId, tasks } = input as {
+        parentId: string
+        tasks: Array<{ title: string; description: string }>
+      }
+      return tasks.map((t) => createTask({ ...t, parentId }))
+    }
 
     default:
       throw new Error(`Unknown tool: ${name}`)
