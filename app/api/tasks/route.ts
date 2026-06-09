@@ -7,9 +7,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const status = searchParams.get('status') as TaskStatus | null
     const sort = searchParams.get('sort') as TaskFilters['sort'] | null
-    const parentId = searchParams.has('parentId')
-      ? (searchParams.get('parentId') ?? null)
-      : undefined
+    // Query params are always strings; "null" is the sentinel for top-level tasks
+    const parentIdRaw = searchParams.has('parentId') ? searchParams.get('parentId') : undefined
+    const parentId = parentIdRaw === 'null' ? null : parentIdRaw
 
     const filters: TaskFilters = {}
     if (status) filters.status = status
