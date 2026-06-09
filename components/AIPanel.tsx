@@ -190,7 +190,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
 
           {response && (
             <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-              <p className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-300">
+              <p className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-zinc-300">
                 {response}
               </p>
             </div>
