@@ -98,6 +98,20 @@ Implemented the shared `runAgentLoop`, tool definitions, and three agents. Used 
 
 ---
 
+## Phase 5: Own-idea agent — Backlog Review
+
+**What I asked Claude to do**: Propose and implement a fourth agent beyond the three specified ones.
+
+**The idea**: A Backlog Review agent that scans all open tasks and flags quality issues before sprint planning — vague descriptions, high-priority tasks with no decomposition, in-progress tasks with no subtasks or notes, forgotten to-dos older than two weeks. This is the "backlog grooming" job a senior engineer does manually every sprint.
+
+**What Claude did**: Implemented `lib/agents/backlog-review.ts` using the `get_all_tasks` and `get_subtasks` tools (a real two-step agentic loop — fetch all, then selectively drill into complex tasks). Added the API route at `/api/ai/backlog-review`, registered it in `AI_ACTIONS` so it appears automatically on the main page panel between Prioritize and Decompose.
+
+**Why this agent over other options**: Standup Generator was considered but overlaps with Status Update (single-task focused). Complexity Estimator was considered but requires per-task invocation. Backlog Review is board-level, proactive rather than reactive, and addresses a pain point every team has — the messy backlog before planning.
+
+**What I changed**: Positioning in the `AI_ACTIONS` list — Backlog Review sits between Prioritize and Decompose in the UI, which groups the board-level agents (Prioritize, Backlog Review) above the task-specific ones (Decompose, Status Update).
+
+---
+
 ## What Claude did well
 
 - **Context retention**: Conventions from `.claude/` were followed consistently across multiple agent sessions and PR reviews without repeated reminders
