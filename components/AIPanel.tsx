@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { AI_ACTIONS, buildAgentUrl, type AIActionKey } from '@/lib/constants'
+
+type PrioritizeResult = { id?: string; pick: string; why: string; context: string }
 
 type ActionKey = AIActionKey
 
@@ -11,6 +14,7 @@ interface AIPanelProps {
 }
 
 export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
+  const router = useRouter()
   const [loading, setLoading] = useState<ActionKey | null>(null)
   const [response, setResponse] = useState<string>('')
   const [activeAction, setActiveAction] = useState<ActionKey | null>(null)
@@ -18,6 +22,8 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   const [awaitingClarification, setAwaitingClarification] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [expanded, setExpanded] = useState(false)
+  const [prioritizeResult, setPrioritizeResult] = useState<PrioritizeResult | null>(null)
+  const [prioritizeModalOpen, setPrioritizeModalOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const clarificationRef = useRef<HTMLTextAreaElement>(null)
 
@@ -26,11 +32,16 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   }, [])
 
   useEffect(() => {
-    if (!expanded) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setExpanded(false) }
+    if (!expanded && !prioritizeModalOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setExpanded(false)
+        setPrioritizeModalOpen(false)
+      }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [expanded])
+  }, [expanded, prioritizeModalOpen])
 
   // Tick elapsed seconds while a request is in flight
   useEffect(() => {
@@ -103,7 +114,8 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
             } catch {
               accumulated += data
             }
-            setResponse(accumulated)
+            // Don't stream partial JSON into the panel for prioritize
+            if (action !== 'prioritize') setResponse(accumulated)
           }
         }
         rawText = accumulated
@@ -141,6 +153,18 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
           return rawText
         }
       })()
+
+      // Prioritize returns structured JSON — open modal instead of text panel
+      if (action === 'prioritize') {
+        try {
+          const parsed = JSON.parse(rawText) as PrioritizeResult
+          if (parsed.pick && parsed.why) {
+            setPrioritizeResult(parsed)
+            setPrioritizeModalOpen(true)
+            return
+          }
+        } catch { /* fall through to text display on malformed response */ }
+      }
 
       if (!responseText.trim()) {
         setResponse('No response from agent. Please try again.')
@@ -294,6 +318,82 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
           </div>
         </div>
       </div>
+    )}
+
+    {/* Prioritize result modal */}
+    {prioritizeModalOpen && prioritizeResult && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        onClick={() => setPrioritizeModalOpen(false)}
+      >
+        <div
+          className="flex w-full max-w-md flex-col gap-5 rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-widest text-blue-400">Start here</span>
+              <h2 className="text-xl font-semibold leading-snug text-zinc-100">{prioritizeResult.pick}</h2>
+            </div>
+            <button
+              onClick={() => setPrioritizeModalOpen(false)}
+              aria-label="Close"
+              className="mt-0.5 shrink-0 rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Why now */}
+          <div className="flex flex-col gap-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Why now</p>
+            <p className="text-sm leading-relaxed text-zinc-200">{prioritizeResult.why}</p>
+          </div>
+
+          {/* Context */}
+          {prioritizeResult.context && (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Context</p>
+              <p className="text-sm leading-relaxed text-zinc-400">{prioritizeResult.context}</p>
+            </div>
+          )}
+
+          {/* Footer actions */}
+          <div className="flex items-center gap-3 border-t border-zinc-800 pt-4">
+            {prioritizeResult.id && (
+              <button
+                onClick={() => { router.push(`/tasks/${prioritizeResult!.id}`); setPrioritizeModalOpen(false) }}
+                className="text-sm font-medium text-blue-400 transition-colors hover:text-blue-300"
+              >
+                Open task →
+              </button>
+            )}
+            <button
+              onClick={() => setPrioritizeModalOpen(false)}
+              className="ml-auto rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* FAB — re-open prioritize result when modal is dismissed */}
+    {prioritizeResult && !prioritizeModalOpen && loading === null && (
+      <button
+        onClick={() => setPrioritizeModalOpen(true)}
+        aria-label="Today's focus"
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all duration-200 hover:bg-blue-500 hover:shadow-xl"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
+        </svg>
+        Today&apos;s focus
+      </button>
     )}
     </>
   )
