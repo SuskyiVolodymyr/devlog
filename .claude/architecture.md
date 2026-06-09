@@ -52,7 +52,7 @@ User request
 
 Agents expose DB tools (get_tasks, get_task, create_task, update_task) typed as `Anthropic.Tool[]`. The loop runner is generic — each agent only defines its system prompt and its tool set.
 
-Responses stream via Server-Sent Events so the UI shows Claude reasoning in real time.
+Agent routes return the full response as JSON once complete. The UI includes SSE-parsing infrastructure for future streaming support.
 
 ## State management
 

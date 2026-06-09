@@ -1,8 +1,9 @@
 import Database from 'better-sqlite3'
 import { nanoid } from 'nanoid'
 import type { Task, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import { DB_PATH } from '@/lib/constants'
 
-const db = new Database('./devlog.db')
+const db = new Database(DB_PATH)
 
 db.pragma('journal_mode = WAL')
 db.pragma('foreign_keys = ON')
@@ -12,8 +13,8 @@ db.exec(`
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    status      TEXT NOT NULL DEFAULT 'todo',
-    priority    TEXT NOT NULL DEFAULT 'medium',
+    status      TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo', 'in-progress', 'done')),
+    priority    TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high')),
     parent_id   TEXT REFERENCES tasks(id) ON DELETE CASCADE,
     notes       TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL
