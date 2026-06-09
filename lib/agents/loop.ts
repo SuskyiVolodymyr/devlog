@@ -44,6 +44,15 @@ export async function runAgentLoop(
       return textBlock.text
     }
 
+    if (response.stop_reason === 'max_tokens') {
+      // Budget exhausted — return whatever text was produced and warn so the caller
+      // can raise maxTokens if this becomes a pattern.
+      console.warn(`[runAgentLoop] Response truncated: max_tokens (${maxTokens}) reached. Raise the budget if responses are being cut off.`)
+      const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
+      if (textBlock) return textBlock.text
+      throw new Error(`Agent response truncated at max_tokens (${maxTokens}) with no text output`)
+    }
+
     if (response.stop_reason === 'tool_use') {
       const toolUseBlocks = response.content.filter(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
