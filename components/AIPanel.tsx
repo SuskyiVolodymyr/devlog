@@ -171,7 +171,11 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
     callAgent('decompose', { clarification: clarification.trim() })
   }
 
-  const visibleActions = AI_ACTIONS.filter((a) => !a.taskOnly || !!taskId)
+  const visibleActions = AI_ACTIONS.filter((a) => {
+    if (a.taskOnly && !taskId) return false
+    if (a.boardOnly && !!taskId) return false
+    return true
+  })
 
   return (
     <>

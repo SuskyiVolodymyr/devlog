@@ -54,7 +54,7 @@ function TaskCard({
   return (
     <div
       onClick={handleCardClick}
-      className="group relative cursor-pointer rounded-lg border border-zinc-700/60 bg-zinc-800/50 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+      className={`group relative flex h-full cursor-pointer flex-col rounded-lg border border-zinc-700/60 bg-zinc-800/50 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-800 ${task.status === 'done' ? 'opacity-60' : ''}`}
     >
       {/* Action buttons — visible on hover */}
       <div
@@ -83,33 +83,35 @@ function TaskCard({
         </button>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <h3 className={`font-medium text-zinc-100 leading-snug pr-16 ${compact ? 'text-sm' : ''}`}>
+      <div className="flex flex-1 flex-col gap-2">
+        <h3 className={`pr-16 font-medium leading-snug text-zinc-100 ${compact ? 'text-sm' : ''}`}>
           {task.title}
         </h3>
 
         {!compact && task.description && (
-          <p className="line-clamp-2 text-sm text-zinc-400">
+          <p className="line-clamp-2 flex-1 text-sm text-zinc-400">
             {task.description}
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            data-action
-            onClick={handleStatusCycle}
-            className="shrink-0"
-            aria-label="Cycle status"
-          >
-            <StatusBadge status={task.status} />
-          </button>
-          <PriorityBadge priority={task.priority} />
-          {subtaskCount > 0 && (
-            <span className="text-xs text-zinc-500">
-              {subtaskCount} subtask{subtaskCount === 1 ? '' : 's'}
-            </span>
-          )}
-          <span className="ml-auto text-xs text-zinc-500">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              data-action
+              onClick={handleStatusCycle}
+              className="shrink-0"
+              aria-label="Cycle status"
+            >
+              <StatusBadge status={task.status} />
+            </button>
+            <PriorityBadge priority={task.priority} />
+            {subtaskCount > 0 && (
+              <span className="shrink-0 rounded bg-zinc-700 px-1.5 py-0.5 text-xs tabular-nums text-zinc-400">
+                {subtaskCount}
+              </span>
+            )}
+          </div>
+          <span className="shrink-0 text-xs text-zinc-500">
             {relativeTime(task.createdAt)}
           </span>
         </div>

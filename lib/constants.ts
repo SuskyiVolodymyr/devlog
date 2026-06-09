@@ -20,15 +20,17 @@ export interface AIAction {
   description: string
   /** true = only shown when viewing a specific task */
   taskOnly: boolean
+  /** true = only shown on the board (no task selected) */
+  boardOnly: boolean
   /** Route segment after /api/ai/. Task-scoped actions append /:taskId automatically. */
   route: string
 }
 
 export const AI_ACTIONS: readonly AIAction[] = [
-  { key: 'prioritize',    label: 'Prioritize',      description: 'Recommend where to start based on all tasks',        taskOnly: false, route: 'prioritize'    },
-  { key: 'backlog-review', label: 'Backlog Review', description: 'Flag vague, stuck, or under-decomposed tasks',          taskOnly: false, route: 'backlog-review' },
-  { key: 'decompose',    label: 'Decompose',       description: 'Break this task into subtasks',                         taskOnly: true,  route: 'decompose'     },
-  { key: 'status-update', label: 'Status Update',  description: 'Draft a Slack-style update for this task',              taskOnly: true,  route: 'status-update' },
+  { key: 'prioritize',    label: 'Prioritize',      description: 'Recommend where to start based on all tasks',  taskOnly: false, boardOnly: true,  route: 'prioritize'    },
+  { key: 'backlog-review', label: 'Backlog Review', description: 'Flag vague, stuck, or under-decomposed tasks', taskOnly: false, boardOnly: true,  route: 'backlog-review' },
+  { key: 'decompose',    label: 'Decompose',       description: 'Break this task into subtasks',                  taskOnly: true,  boardOnly: false, route: 'decompose'     },
+  { key: 'status-update', label: 'Status Update',  description: 'Draft a Slack-style update for this task',      taskOnly: true,  boardOnly: false, route: 'status-update' },
 ]
 
 export function buildAgentUrl(action: AIActionKey, taskId?: string): string {
