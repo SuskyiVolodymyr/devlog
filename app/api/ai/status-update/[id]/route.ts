@@ -2,6 +2,7 @@ import { runStatusUpdateAgent } from '@/lib/agents/status-update'
 import { getTask } from '@/lib/db'
 import { headers } from 'next/headers'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { createAgentSSEResponse } from '@/lib/sse'
 
 export async function POST(
   request: Request,
@@ -22,8 +23,9 @@ export async function POST(
     const body = await request.json().catch(() => ({}))
     const notes = typeof body.notes === 'string' ? body.notes : undefined
 
-    const result = await runStatusUpdateAgent(id, notes)
-    return Response.json({ result })
+    return createAgentSSEResponse((onToken) =>
+      runStatusUpdateAgent(id, notes, onToken).then(() => undefined)
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     return Response.json({ error: message }, { status: 500 })

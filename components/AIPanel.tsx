@@ -25,7 +25,8 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   async function callAgent(action: ActionKey, body?: Record<string, string>) {
     abortRef.current?.abort()
     abortRef.current = new AbortController()
-    const timeout = setTimeout(() => abortRef.current?.abort(), 30_000)
+    // 90s — generous enough for multi-step agentic loops over SSE
+    const timeout = setTimeout(() => abortRef.current?.abort(), 90_000)
 
     setLoading(action)
     setResponse('')
@@ -64,12 +65,21 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
           if (done) break
           const chunk = decoder.decode(value, { stream: true })
           for (const line of chunk.split('\n')) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6)
-              if (data === '[DONE]') break
-              accumulated += data
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6)
+            if (data === '[DONE]') break
+            if (data.startsWith('[ERROR] ')) {
+              accumulated = `Error: ${data.slice(8)}`
               setResponse(accumulated)
+              break
             }
+            try {
+              // JSON-encoded delta: {"d":"..."}
+              accumulated += (JSON.parse(data) as { d: string }).d
+            } catch {
+              accumulated += data
+            }
+            setResponse(accumulated)
           }
         }
         rawText = accumulated
