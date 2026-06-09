@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useTaskList } from '@/lib/hooks/useTasks'
 import type { Task, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
 import TaskCard from '@/components/TaskCard'
 import FilterBar from '@/components/FilterBar'
@@ -8,35 +9,16 @@ import TaskForm from '@/components/TaskForm'
 import AIPanel from '@/components/AIPanel'
 
 export default function HomePage() {
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [subtaskCounts, setSubtaskCounts] = useState<Record<string, number>>({})
   const [filters, setFilters] = useState<TaskFilters>({ parentId: null, sort: 'date' })
-  const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [mutationError, setMutationError] = useState<string | null>(null)
 
-  const fetchTasks = useCallback(async () => {
-    setLoading(true)
-    const params = new URLSearchParams()
-    if (filters.status) params.set('status', filters.status)
-    if (filters.sort) params.set('sort', filters.sort)
-    // Fetch top-level tasks only on the main page
-    params.set('parentId', 'null')
+  const { tasks, loading, error: fetchError, refetch: fetchTasks } = useTaskList(filters)
 
-    try {
-      const res = await fetch(`/api/tasks?${params.toString()}`)
-      if (!res.ok) throw new Error('Failed to fetch tasks')
-      const data = await res.json() as Task[]
-      setTasks(data)
-    } catch {
-      // silently handle; could add toast here
-    } finally {
-      setLoading(false)
-    }
-  }, [filters])
-
-  // Fetch subtask counts for each top-level task
+  // Fetch subtask counts for each top-level task (documented N+1 trade-off)
+  const [subtaskCounts, setSubtaskCounts] = useState<Record<string, number>>({})
   const fetchSubtaskCounts = useCallback(async (taskList: Task[]) => {
     const counts: Record<string, number> = {}
     await Promise.all(
@@ -56,62 +38,86 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    fetchTasks()
-  }, [fetchTasks])
-
-  useEffect(() => {
     if (tasks.length > 0) fetchSubtaskCounts(tasks)
   }, [tasks, fetchSubtaskCounts])
 
+  // Escape key dismisses mobile AI panel
+  useEffect(() => {
+    if (!aiPanelOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setAiPanelOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [aiPanelOpen])
+
   async function handleCreate(input: CreateTaskInput | UpdateTaskInput) {
+    setMutationError(null)
     try {
-      await fetch('/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to create task' })) as { error?: string }
+        setMutationError(err.error ?? 'Failed to create task')
+        return
+      }
       setShowForm(false)
       fetchTasks()
     } catch {
-      // ignore
+      setMutationError('Network error. Please try again.')
     }
   }
 
   async function handleUpdate(input: CreateTaskInput | UpdateTaskInput) {
     if (!editingTask) return
+    setMutationError(null)
     try {
-      await fetch(`/api/tasks/${editingTask.id}`, {
+      const res = await fetch(`/api/tasks/${editingTask.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to update task' })) as { error?: string }
+        setMutationError(err.error ?? 'Failed to update task')
+        return
+      }
       setEditingTask(undefined)
       setShowForm(false)
       fetchTasks()
     } catch {
-      // ignore
+      setMutationError('Network error. Please try again.')
     }
   }
 
   async function handleDelete(id: string) {
+    setMutationError(null)
     try {
-      await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        setMutationError('Failed to delete task')
+        return
+      }
       fetchTasks()
     } catch {
-      // ignore
+      setMutationError('Network error. Please try again.')
     }
   }
 
   async function handleStatusChange(id: string, status: TaskStatus) {
     try {
-      await fetch(`/api/tasks/${id}`, {
+      const res = await fetch(`/api/tasks/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       })
-      fetchTasks()
+      if (!res.ok) setMutationError('Failed to update status')
+      else fetchTasks()
     } catch {
-      // ignore
+      setMutationError('Network error. Please try again.')
     }
   }
 
@@ -163,14 +169,30 @@ export default function HomePage() {
         <main className="flex min-w-0 flex-1 flex-col gap-5">
           <FilterBar filters={filters} onChange={setFilters} />
 
+          {mutationError && (
+            <div role="alert" className="rounded-lg border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
+              {mutationError}
+            </div>
+          )}
+
           {loading ? (
-            <div className="flex items-center justify-center py-16">
+            <div role="status" aria-live="polite" aria-label="Loading tasks" className="flex items-center justify-center py-16">
               <svg className="h-6 w-6 animate-spin text-zinc-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
             </div>
-          ) : tasks.length === 0 ? (
+          ) : fetchError ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+              <p className="text-zinc-500">{fetchError}</p>
+              <button
+                onClick={fetchTasks}
+                className="text-sm text-blue-400 underline-offset-2 hover:underline"
+              >
+                Retry
+              </button>
+            </div>
+          ) : tasks.length === 0 && !loading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
               <p className="text-zinc-500">No tasks yet.</p>
               <button

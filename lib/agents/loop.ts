@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { CLAUDE_MODEL } from '@/lib/constants'
 
 const client = new Anthropic()
 
@@ -13,7 +14,7 @@ export async function runAgentLoop(
 
   for (let i = 0; i < maxIterations; i++) {
     const response = await client.messages.create({
-      model: 'claude-opus-4-8',
+      model: CLAUDE_MODEL,
       max_tokens: 4096,
       system: systemPrompt,
       tools,
@@ -39,7 +40,13 @@ export async function runAgentLoop(
       // Execute all tool calls and collect results
       const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
         toolUseBlocks.map(async (block) => {
-          const result = await executeTool(block.name, block.input as Record<string, unknown>)
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Tool ${block.name} timed out after 30s`)), 30_000)
+          )
+          const result = await Promise.race([
+            executeTool(block.name, block.input as Record<string, unknown>),
+            timeoutPromise,
+          ])
           return {
             type: 'tool_result' as const,
             tool_use_id: block.id,

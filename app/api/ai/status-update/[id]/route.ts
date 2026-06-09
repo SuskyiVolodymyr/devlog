@@ -1,4 +1,7 @@
 import { runStatusUpdateAgent } from '@/lib/agents/status-update'
+import { getTask } from '@/lib/db'
+import { headers } from 'next/headers'
+import { checkRateLimit } from '@/lib/rateLimit'
 
 export async function POST(
   request: Request,
@@ -6,6 +9,16 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+
+    const headersList = await headers()
+    const ip = headersList.get('x-forwarded-for') ?? 'unknown'
+    if (!checkRateLimit(ip)) {
+      return Response.json({ error: 'Too many requests. Please wait a minute.' }, { status: 429 })
+    }
+
+    const task = getTask(id)
+    if (!task) return Response.json({ error: 'Task not found' }, { status: 404 })
+
     const body = await request.json().catch(() => ({}))
     const notes = typeof body.notes === 'string' ? body.notes : undefined
 
