@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTaskList } from '@/lib/hooks/useTasks'
-import type { Task, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import type { Task, TaskPage, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
 import TaskCard from '@/components/TaskCard'
 import FilterBar from '@/components/FilterBar'
 import TaskForm from '@/components/TaskForm'
@@ -15,19 +15,20 @@ export default function HomePage() {
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
 
-  const { tasks, loading, error: fetchError, refetch: fetchTasks } = useTaskList(filters)
+  const { tasks, total, hasMore, loadMore, loading, error: fetchError, refetch: fetchTasks } = useTaskList(filters)
 
-  // Fetch subtask counts for each top-level task (documented N+1 trade-off)
+  // Fetch subtask counts for each top-level task (N+1 trade-off, bounded by page size)
+  // Uses limit=1 so only the total is returned, not task bodies
   const [subtaskCounts, setSubtaskCounts] = useState<Record<string, number>>({})
   const fetchSubtaskCounts = useCallback(async (taskList: Task[]) => {
     const counts: Record<string, number> = {}
     await Promise.all(
       taskList.map(async (task) => {
         try {
-          const res = await fetch(`/api/tasks?parentId=${task.id}`)
+          const res = await fetch(`/api/tasks?parentId=${task.id}&limit=1`)
           if (res.ok) {
-            const subs = await res.json() as Task[]
-            counts[task.id] = subs.length
+            const data = await res.json() as TaskPage
+            counts[task.id] = data.total
           }
         } catch {
           // ignore individual failures
@@ -203,17 +204,33 @@ export default function HomePage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {tasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  subtaskCount={subtaskCounts[task.id] ?? 0}
-                  onEdit={openEdit}
-                  onDelete={handleDelete}
-                  onStatusChange={handleStatusChange}
-                />
-              ))}
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    subtaskCount={subtaskCounts[task.id] ?? 0}
+                    onEdit={openEdit}
+                    onDelete={handleDelete}
+                    onStatusChange={handleStatusChange}
+                  />
+                ))}
+              </div>
+
+              {/* Pagination footer */}
+              <div className="flex items-center justify-between text-sm text-zinc-500">
+                <span>{tasks.length} of {total} task{total === 1 ? '' : 's'}</span>
+                {hasMore && (
+                  <button
+                    onClick={loadMore}
+                    disabled={loading}
+                    className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {loading ? 'Loading…' : 'Load more'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </main>

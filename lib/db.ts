@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { nanoid } from 'nanoid'
-import type { Task, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import type { Task, TaskFilters, TaskPage, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
 import { DB_PATH } from '@/lib/constants'
 
 const db = new Database(DB_PATH)
@@ -73,6 +73,38 @@ export function getTasks(filters?: TaskFilters): Task[] {
 
   const rows = db.prepare(`SELECT * FROM tasks ${where} ${order}`).all(...params) as TaskRow[]
   return rows.map(rowToTask)
+}
+
+export function getTasksPage(filters: TaskFilters, page: number, limit: number): TaskPage {
+  const conditions: string[] = []
+  const params: (string | null)[] = []
+
+  if (filters?.status) {
+    conditions.push('status = ?')
+    params.push(filters.status)
+  }
+
+  if (filters?.parentId !== undefined) {
+    if (filters.parentId === null) {
+      conditions.push('parent_id IS NULL')
+    } else {
+      conditions.push('parent_id = ?')
+      params.push(filters.parentId)
+    }
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  const order =
+    filters?.sort === 'priority'
+      ? `ORDER BY ${PRIORITY_ORDER}, created_at DESC`
+      : 'ORDER BY created_at DESC'
+
+  const { total } = db.prepare(`SELECT COUNT(*) as total FROM tasks ${where}`).get(...params) as { total: number }
+  const rows = db
+    .prepare(`SELECT * FROM tasks ${where} ${order} LIMIT ? OFFSET ?`)
+    .all(...params, limit, page * limit) as TaskRow[]
+
+  return { tasks: rows.map(rowToTask), total, page, limit }
 }
 
 export function getTask(id: string): Task | null {
