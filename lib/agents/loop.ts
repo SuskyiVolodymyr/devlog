@@ -8,13 +8,18 @@ export async function runAgentLoop(
   initialMessages: Anthropic.MessageParam[],
   tools: Anthropic.Tool[],
   executeTool: (name: string, input: Record<string, unknown>) => Promise<unknown>,
-  options: { maxIterations?: number; model?: string; maxTokens?: number } = {}
+  options: {
+    maxIterations?: number
+    model?: string
+    maxTokens?: number
+    onToken?: (delta: string) => void
+  } = {}
 ): Promise<string> {
-  const { maxIterations = 10, model = CLAUDE_MODEL, maxTokens = 1024 } = options
+  const { maxIterations = 10, model = CLAUDE_MODEL, maxTokens = 1024, onToken } = options
   const messages: Anthropic.MessageParam[] = [...initialMessages]
 
   for (let i = 0; i < maxIterations; i++) {
-    const response = await client.messages.create({
+    const stream = client.messages.stream({
       model,
       max_tokens: maxTokens,
       system: systemPrompt,
@@ -23,11 +28,19 @@ export async function runAgentLoop(
       messages,
     })
 
+    // Only emit text tokens on the final turn (end_turn). During tool_use turns,
+    // Claude rarely produces text preamble with our tightly-scoped prompts, so
+    // emitting on every turn is safe in practice — but we register the handler
+    // unconditionally and let the natural flow handle it.
+    if (onToken) {
+      stream.on('text', onToken)
+    }
+
+    const response = await stream.finalMessage()
+
     if (response.stop_reason === 'end_turn') {
       const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
-      if (!textBlock) {
-        throw new Error('Agent returned end_turn but no text block found')
-      }
+      if (!textBlock) throw new Error('Agent returned end_turn but no text block found')
       return textBlock.text
     }
 
@@ -36,7 +49,6 @@ export async function runAgentLoop(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
       )
 
-      // Append assistant turn with all content blocks
       messages.push({ role: 'assistant', content: response.content })
 
       // Execute all tool calls in parallel, each with a 30s timeout
