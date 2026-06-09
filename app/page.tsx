@@ -1,65 +1,251 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState, useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import {
+  useTaskList,
+  useSubtaskStats,
+  useCreateTask,
+  useUpdateTask,
+  useDeleteTask,
+  useUpdateTaskStatus,
+} from '@/lib/hooks/useTasks'
+import type { Task, TaskStatus, TaskFilters, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import TaskCard from '@/components/TaskCard'
+import FilterBar from '@/components/FilterBar'
+import TaskForm from '@/components/TaskForm'
+import AIPanel from '@/components/AIPanel'
+
+export default function HomePage() {
+  const [filters, setFilters] = useState<TaskFilters>({ parentId: null, sort: 'date' })
+  const [showForm, setShowForm] = useState(false)
+  const [editingTask, setEditingTask] = useState<Task | undefined>(undefined)
+  const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [mutationError, setMutationError] = useState<string | null>(null)
+  const [seeding, setSeeding] = useState(false)
+
+  const qc = useQueryClient()
+  const { tasks, total, hasMore, loadMore, isFetchingMore, loading, error: fetchError } = useTaskList(filters)
+  const subtaskStats = useSubtaskStats(tasks)
+
+  const createTaskMutation = useCreateTask()
+  const updateTaskMutation = useUpdateTask()
+  const deleteTaskMutation = useDeleteTask()
+  const updateStatusMutation = useUpdateTaskStatus()
+
+  // Escape key dismisses mobile AI panel
+  useEffect(() => {
+    if (!aiPanelOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setAiPanelOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [aiPanelOpen])
+
+  const handleCreate = useCallback((input: CreateTaskInput | UpdateTaskInput) => {
+    setMutationError(null)
+    createTaskMutation.mutate(input as CreateTaskInput, {
+      onSuccess: () => setShowForm(false),
+      onError: (err) => setMutationError(err instanceof Error ? err.message : 'Failed to create task'),
+    })
+  }, [createTaskMutation])
+
+  const handleUpdate = useCallback((input: CreateTaskInput | UpdateTaskInput) => {
+    if (!editingTask) return
+    setMutationError(null)
+    updateTaskMutation.mutate({ id: editingTask.id, input: input as UpdateTaskInput }, {
+      onSuccess: () => { setEditingTask(undefined); setShowForm(false) },
+      onError: (err) => setMutationError(err instanceof Error ? err.message : 'Failed to update task'),
+    })
+  }, [editingTask, updateTaskMutation])
+
+  const handleDelete = useCallback((id: string) => {
+    setMutationError(null)
+    deleteTaskMutation.mutate(id, {
+      onError: (err) => setMutationError(err instanceof Error ? err.message : 'Failed to delete task'),
+    })
+  }, [deleteTaskMutation])
+
+  const handleStatusChange = useCallback((id: string, status: TaskStatus) => {
+    updateStatusMutation.mutate({ taskId: id, status }, {
+      onError: () => setMutationError('Failed to update status'),
+    })
+  }, [updateStatusMutation])
+
+  const openEdit = useCallback((task: Task) => {
+    setEditingTask(task)
+    setShowForm(true)
+  }, [])
+
+  const closeForm = useCallback(() => {
+    setShowForm(false)
+    setEditingTask(undefined)
+  }, [])
+
+  const handleSeed = useCallback(async () => {
+    setSeeding(true)
+    setMutationError(null)
+    try {
+      const res = await fetch('/api/dev/seed', { method: 'POST' })
+      if (!res.ok) throw new Error('Seed failed')
+      await qc.invalidateQueries({ queryKey: ['tasks'] })
+      await qc.invalidateQueries({ queryKey: ['subtask-count'] })
+    } catch {
+      setMutationError('Failed to load demo data')
+    } finally {
+      setSeeding(false)
+    }
+  }, [qc])
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      {/* Sticky header */}
+      <header className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold tracking-tight text-zinc-100">DevLog</span>
+            <span className="hidden rounded-full bg-blue-900/60 px-2 py-0.5 text-xs font-medium text-blue-300 sm:inline">
+              AI-powered
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSeed}
+              disabled={seeding}
+              className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {seeding ? 'Loading…' : 'Demo data'}
+            </button>
+            {/* Mobile AI toggle */}
+            <button
+              onClick={() => setAiPanelOpen(!aiPanelOpen)}
+              aria-label="Toggle AI panel"
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 lg:hidden"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
+              </svg>
+              AI
+            </button>
+            <button
+              onClick={() => { setEditingTask(undefined); setShowForm(true) }}
+              className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+            >
+              + New Task
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto flex max-w-7xl gap-6 px-4 py-6 sm:px-6">
+        {/* Main task list */}
+        <main className="flex min-w-0 flex-1 flex-col gap-5">
+          <FilterBar filters={filters} onChange={setFilters} />
+
+          {mutationError && (
+            <div role="alert" className="flex items-center justify-between rounded-lg border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
+              <span>{mutationError}</span>
+              <button onClick={() => setMutationError(null)} className="ml-3 text-xs underline underline-offset-2 hover:no-underline">Dismiss</button>
+            </div>
+          )}
+
+          {loading ? (
+            <div role="status" aria-live="polite" aria-label="Loading tasks" className="flex items-center justify-center py-16">
+              <svg className="h-6 w-6 animate-spin text-zinc-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+          ) : fetchError ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+              <p className="text-zinc-500">{fetchError}</p>
+            </div>
+          ) : tasks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+              <p className="text-zinc-500">No tasks yet.</p>
+              <button
+                onClick={() => setShowForm(true)}
+                className="text-sm text-blue-400 underline-offset-2 hover:underline"
+              >
+                Create your first task
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {tasks.map((task, index) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    subtaskStats={subtaskStats[task.id]}
+                    index={index}
+                    onEdit={openEdit}
+                    onDelete={handleDelete}
+                    onStatusChange={handleStatusChange}
+                  />
+                ))}
+              </div>
+
+              {/* Pagination footer */}
+              <div className="flex items-center justify-between text-sm text-zinc-500">
+                <span>{tasks.length} of {total} task{total === 1 ? '' : 's'}</span>
+                {hasMore && (
+                  <button
+                    onClick={() => loadMore()}
+                    disabled={isFetchingMore}
+                    className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isFetchingMore ? 'Loading…' : 'Load more'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Desktop AI sidebar */}
+        <aside className="hidden w-72 shrink-0 lg:block">
+          <div className="sticky top-20">
+            <AIPanel />
+          </div>
+        </aside>
+      </div>
+
+      {/* Mobile AI panel slide-over */}
+      {aiPanelOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setAiPanelOpen(false)}
+        >
+          <div
+            className="absolute right-0 top-0 h-full w-full overflow-y-auto bg-zinc-900 p-4 shadow-2xl sm:w-80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex justify-end">
+              <button
+                onClick={() => setAiPanelOpen(false)}
+                className="rounded p-1 text-zinc-500 hover:text-zinc-300"
+                aria-label="Close AI panel"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+            <AIPanel />
+          </div>
+        </div>
+      )}
+
+      {/* Task create/edit modal */}
+      {showForm && (
+        <TaskForm
+          task={editingTask}
+          onSubmit={editingTask ? handleUpdate : handleCreate}
+          onClose={closeForm}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      )}
     </div>
-  );
+  )
 }

@@ -24,6 +24,17 @@
 .DS_Store
 *.pem
 
+# local database
+devlog.db
+devlog.db-shm
+devlog.db-wal
+
+# IDE
+.idea/
+
+# Claude Code worktrees (temporary agent sandboxes)
+.claude/worktrees/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -32,6 +43,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
