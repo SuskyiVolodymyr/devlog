@@ -15,6 +15,7 @@ export default function HomePage() {
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
+  const [seeding, setSeeding] = useState(false)
 
   const { tasks, setTasks, total, hasMore, loadMore, loading, error: fetchError, refetch: fetchTasks } = useTaskList(filters)
 
@@ -109,6 +110,20 @@ export default function HomePage() {
     setEditingTask(undefined)
   }, [])
 
+  const handleSeed = useCallback(async () => {
+    setSeeding(true)
+    setMutationError(null)
+    try {
+      const res = await fetch('/api/dev/seed', { method: 'POST' })
+      if (!res.ok) throw new Error('Seed failed')
+      fetchTasks()
+    } catch {
+      setMutationError('Failed to load demo data')
+    } finally {
+      setSeeding(false)
+    }
+  }, [fetchTasks])
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       {/* Sticky header */}
@@ -121,6 +136,13 @@ export default function HomePage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleSeed}
+              disabled={seeding}
+              className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {seeding ? 'Loading…' : 'Demo data'}
+            </button>
             {/* Mobile AI toggle */}
             <button
               onClick={() => setAiPanelOpen(!aiPanelOpen)}
