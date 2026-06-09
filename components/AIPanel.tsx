@@ -80,8 +80,10 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   const [elapsed, setElapsed] = useState(0)
   const [expanded, setExpanded] = useState(false)
   const [prioritizeText, setPrioritizeText] = useState<string>('')
+  const [prioritizeVisible, setPrioritizeVisible] = useState(0)
   const [prioritizeModalOpen, setPrioritizeModalOpen] = useState(false)
   const [backlogText, setBacklogText] = useState<string>('')
+  const [backlogVisible, setBacklogVisible] = useState(0)
   const [backlogModalOpen, setBacklogModalOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const clarificationRef = useRef<HTMLTextAreaElement>(null)
@@ -102,6 +104,23 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [expanded, prioritizeModalOpen, backlogModalOpen])
+
+  // Typewriter animation — advance visible character count each frame
+  useEffect(() => {
+    if (prioritizeVisible >= prioritizeText.length) return
+    const id = requestAnimationFrame(() =>
+      setPrioritizeVisible(v => Math.min(v + (loading === null ? 20 : 4), prioritizeText.length))
+    )
+    return () => cancelAnimationFrame(id)
+  }, [prioritizeText, prioritizeVisible, loading])
+
+  useEffect(() => {
+    if (backlogVisible >= backlogText.length) return
+    const id = requestAnimationFrame(() =>
+      setBacklogVisible(v => Math.min(v + (loading === null ? 20 : 4), backlogText.length))
+    )
+    return () => cancelAnimationFrame(id)
+  }, [backlogText, backlogVisible, loading])
 
   // Tick elapsed seconds while a request is in flight
   useEffect(() => {
@@ -251,10 +270,12 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
     setClarification('')
     if (action === 'prioritize') {
       setPrioritizeText('')
+      setPrioritizeVisible(0)
       setPrioritizeModalOpen(true)
     }
     if (action === 'backlog-review') {
       setBacklogText('')
+      setBacklogVisible(0)
       setBacklogModalOpen(true)
     }
     callAgent(action)
@@ -392,12 +413,15 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
 
     {/* Prioritize modal — opens immediately, streams text live */}
     {prioritizeModalOpen && (() => {
-      const sepIdx = prioritizeText.indexOf('\n---')
-      const displayText = sepIdx >= 0 ? prioritizeText.slice(0, sepIdx) : prioritizeText
+      const visibleSlice = prioritizeText.slice(0, prioritizeVisible)
+      const sepIdx = visibleSlice.indexOf('\n---')
+      const displayText = sepIdx >= 0 ? visibleSlice.slice(0, sepIdx) : visibleSlice
+      const animDone = prioritizeVisible >= prioritizeText.length
       let taskRef: TaskRef | null = null
-      if (loading === null && prioritizeText.includes('\n---\n')) {
+      if (animDone && prioritizeText.includes('\n---\n')) {
         try { taskRef = JSON.parse(prioritizeText.split('\n---\n')[1].trim()) as TaskRef } catch {}
       }
+      const isStreaming = !animDone
       return (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
@@ -433,7 +457,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
               {/* Streaming body */}
               <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
                 {displayText ? (
-                  renderMarkdown(displayText, loading !== null)
+                  renderMarkdown(displayText, isStreaming)
                 ) : (
                   <div className="flex items-center gap-2 text-zinc-500">
                     <svg className="h-4 w-4 animate-spin text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -445,7 +469,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
                 )}
               </div>
 
-              {/* Task card — appears after streaming completes */}
+              {/* Task card — appears after animation completes */}
               {taskRef && (
                 <div className="mx-5 mb-4 flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800/60 px-4 py-3">
                   <div className="min-w-0">
@@ -466,10 +490,10 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
             <div className="flex shrink-0 justify-end border-t border-zinc-800 px-5 py-3">
               <button
                 onClick={() => setPrioritizeModalOpen(false)}
-                disabled={loading !== null}
+                disabled={isStreaming}
                 className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {loading !== null ? 'Thinking…' : 'Got it'}
+                {loading !== null ? 'Thinking…' : isStreaming ? '…' : 'Got it'}
               </button>
             </div>
           </div>
@@ -509,12 +533,15 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
     {/* Backlog review modal */}
     {backlogModalOpen && (() => {
       const SENTINEL = '[FLAGGED_JSON]'
-      const sepIdx = backlogText.indexOf(SENTINEL)
-      const displayText = sepIdx >= 0 ? backlogText.slice(0, sepIdx).trimEnd() : backlogText
+      const visibleSlice = backlogText.slice(0, backlogVisible)
+      const sepIdx = visibleSlice.indexOf(SENTINEL)
+      const displayText = sepIdx >= 0 ? visibleSlice.slice(0, sepIdx).trimEnd() : visibleSlice
+      const animDone = backlogVisible >= backlogText.length
       let taskRefs: TaskRef[] = []
-      if (loading === null && sepIdx >= 0) {
-        try { taskRefs = JSON.parse(backlogText.slice(sepIdx + SENTINEL.length).trim()) as TaskRef[] } catch {}
+      if (animDone && backlogText.indexOf(SENTINEL) >= 0) {
+        try { taskRefs = JSON.parse(backlogText.slice(backlogText.indexOf(SENTINEL) + SENTINEL.length).trim()) as TaskRef[] } catch {}
       }
+      const isStreaming = !animDone
       return (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
@@ -551,7 +578,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
               {/* Streaming body */}
               <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
                 {displayText ? (
-                  renderMarkdown(displayText)
+                  renderMarkdown(displayText, isStreaming)
                 ) : (
                   <div className="flex items-center gap-2 text-zinc-500">
                     <svg className="h-4 w-4 animate-spin text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -563,7 +590,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
                 )}
               </div>
 
-              {/* Task chips — appear after streaming completes */}
+              {/* Task chips — appear after animation completes */}
               {taskRefs.length > 0 && (
                 <div className="mx-5 mb-4 flex flex-col gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Needs attention</p>
@@ -586,10 +613,10 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
             <div className="flex shrink-0 justify-end border-t border-zinc-800 px-5 py-3">
               <button
                 onClick={() => setBacklogModalOpen(false)}
-                disabled={loading !== null}
+                disabled={isStreaming}
                 className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {loading !== null ? 'Reviewing…' : 'Got it'}
+                {loading !== null ? 'Reviewing…' : isStreaming ? '…' : 'Got it'}
               </button>
             </div>
           </div>
