@@ -177,8 +177,9 @@ export default function HomePage() {
           <FilterBar filters={filters} onChange={setFilters} />
 
           {mutationError && (
-            <div role="alert" className="rounded-lg border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
-              {mutationError}
+            <div role="alert" className="flex items-center justify-between rounded-lg border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
+              <span>{mutationError}</span>
+              <button onClick={() => setMutationError(null)} className="ml-3 text-xs underline underline-offset-2 hover:no-underline">Dismiss</button>
             </div>
           )}
 
