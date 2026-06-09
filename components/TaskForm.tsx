@@ -1,7 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import type { Task, TaskStatus, TaskPriority, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import { useState, useEffect, useRef } from 'react'
+import type { Task, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import { TASK_STATUSES, TASK_PRIORITIES } from '@/lib/constants'
+
+type TaskStatus = typeof TASK_STATUSES[number]
+type TaskPriority = typeof TASK_PRIORITIES[number]
 
 interface TaskFormProps {
   task?: Task
@@ -10,23 +14,24 @@ interface TaskFormProps {
   parentId?: string
 }
 
-const STATUS_OPTIONS: { label: string; value: TaskStatus }[] = [
-  { label: 'Todo', value: 'todo' },
-  { label: 'In Progress', value: 'in-progress' },
-  { label: 'Done', value: 'done' },
-]
+const STATUS_OPTIONS = [
+  { label: 'Todo', value: 'todo' as const },
+  { label: 'In Progress', value: 'in-progress' as const },
+  { label: 'Done', value: 'done' as const },
+] satisfies { label: string; value: typeof TASK_STATUSES[number] }[]
 
-const PRIORITY_OPTIONS: { label: string; value: TaskPriority }[] = [
-  { label: 'Low', value: 'low' },
-  { label: 'Medium', value: 'medium' },
-  { label: 'High', value: 'high' },
-]
+const PRIORITY_OPTIONS = [
+  { label: 'Low', value: 'low' as const },
+  { label: 'Medium', value: 'medium' as const },
+  { label: 'High', value: 'high' as const },
+] satisfies { label: string; value: typeof TASK_PRIORITIES[number] }[]
 
 export default function TaskForm({ task, onSubmit, onClose, parentId }: TaskFormProps) {
   const [title, setTitle] = useState(task?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? '')
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'todo')
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 'medium')
+  const modalRef = useRef<HTMLDivElement>(null)
 
   const isEdit = Boolean(task)
 
@@ -38,6 +43,31 @@ export default function TaskForm({ task, onSubmit, onClose, parentId }: TaskForm
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  // Focus trap
+  useEffect(() => {
+    const modal = modalRef.current
+    if (!modal) return
+    const focusable = Array.from(
+      modal.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    )
+    focusable[0]?.focus()
+
+    function handleTab(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last?.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first?.focus()
+      }
+    }
+    modal.addEventListener('keydown', handleTab)
+    return () => modal.removeEventListener('keydown', handleTab)
+  }, [])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -63,7 +93,7 @@ export default function TaskForm({ task, onSubmit, onClose, parentId }: TaskForm
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+      <div ref={modalRef} className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-700 px-5 py-4">
           <h2 className="text-base font-semibold text-zinc-100">
@@ -94,7 +124,6 @@ export default function TaskForm({ task, onSubmit, onClose, parentId }: TaskForm
               onChange={(e) => setTitle(e.target.value)}
               placeholder="What needs to be done?"
               required
-              autoFocus
               className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>

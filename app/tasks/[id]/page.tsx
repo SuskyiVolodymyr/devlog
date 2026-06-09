@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useTask, useSubtasks } from '@/lib/hooks/useTasks'
 import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
 import StatusBadge from '@/components/StatusBadge'
 import PriorityBadge from '@/components/PriorityBadge'
@@ -14,116 +15,131 @@ export default function TaskDetailPage() {
   const router = useRouter()
   const id = params.id as string
 
-  const [task, setTask] = useState<Task | null>(null)
-  const [subtasks, setSubtasks] = useState<Task[]>([])
-  const [loading, setLoading] = useState(true)
+  const { task, setTask, loading, error: fetchError, notFound, refetch: fetchTask } = useTask(id)
+  const { subtasks, refetch: fetchSubtasks } = useSubtasks(id)
+
   const [notesValue, setNotesValue] = useState('')
   const [showSubtaskForm, setShowSubtaskForm] = useState(false)
   const [editingSubtask, setEditingSubtask] = useState<Task | undefined>(undefined)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [mutationError, setMutationError] = useState<string | null>(null)
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Clear pending save on unmount to avoid setState after unmount
   useEffect(() => () => { if (saveTimeout.current) clearTimeout(saveTimeout.current) }, [])
 
-  const fetchTask = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/tasks/${id}`)
-      if (!res.ok) { router.push('/'); return }
-      const data = await res.json() as Task
-      setTask(data)
-      setNotesValue(data.notes ?? '')
-    } catch {
-      router.push('/')
-    } finally {
-      setLoading(false)
-    }
-  }, [id, router])
-
-  const fetchSubtasks = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/tasks?parentId=${id}`)
-      if (res.ok) {
-        const data = await res.json() as Task[]
-        setSubtasks(data)
-      }
-    } catch {
-      // ignore
-    }
-  }, [id])
-
+  // Sync notesValue when task loads
   useEffect(() => {
-    fetchTask()
-    fetchSubtasks()
-  }, [fetchTask, fetchSubtasks])
+    if (task) setNotesValue(task.notes ?? '')
+  }, [task])
+
+  // Redirect on not found
+  useEffect(() => {
+    if (notFound) router.push('/')
+  }, [notFound, router])
+
+  // Escape key dismisses mobile AI panel
+  useEffect(() => {
+    if (!aiPanelOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setAiPanelOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [aiPanelOpen])
 
   async function handleNotesBlur() {
     if (!task || notesValue === task.notes) return
     try {
-      await fetch(`/api/tasks/${id}`, {
+      const res = await fetch(`/api/tasks/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes: notesValue }),
       })
+      if (!res.ok) {
+        setMutationError('Failed to save notes')
+        return
+      }
       setTask((prev) => prev ? { ...prev, notes: notesValue } : prev)
     } catch {
-      // ignore
+      setMutationError('Network error. Failed to save notes.')
     }
   }
 
   async function handleStatusChange(taskId: string, status: TaskStatus) {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       })
+      if (!res.ok) {
+        setMutationError('Failed to update status')
+        return
+      }
       if (taskId === id) {
         setTask((prev) => prev ? { ...prev, status } : prev)
       } else {
         fetchSubtasks()
       }
     } catch {
-      // ignore
+      setMutationError('Network error. Please try again.')
     }
   }
 
   async function handleCreateSubtask(input: CreateTaskInput | UpdateTaskInput) {
+    setMutationError(null)
     try {
-      await fetch('/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...input, parentId: id }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to create subtask' })) as { error?: string }
+        setMutationError(err.error ?? 'Failed to create subtask')
+        return
+      }
       setShowSubtaskForm(false)
       fetchSubtasks()
     } catch {
-      // ignore
+      setMutationError('Network error. Please try again.')
     }
   }
 
   async function handleUpdateSubtask(input: CreateTaskInput | UpdateTaskInput) {
     if (!editingSubtask) return
+    setMutationError(null)
     try {
-      await fetch(`/api/tasks/${editingSubtask.id}`, {
+      const res = await fetch(`/api/tasks/${editingSubtask.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to update subtask' })) as { error?: string }
+        setMutationError(err.error ?? 'Failed to update subtask')
+        return
+      }
       setEditingSubtask(undefined)
       setShowSubtaskForm(false)
       fetchSubtasks()
     } catch {
-      // ignore
+      setMutationError('Network error. Please try again.')
     }
   }
 
   async function handleDeleteSubtask(subtaskId: string) {
+    setMutationError(null)
     try {
-      await fetch(`/api/tasks/${subtaskId}`, { method: 'DELETE' })
+      const res = await fetch(`/api/tasks/${subtaskId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        setMutationError('Failed to delete subtask')
+        return
+      }
       fetchSubtasks()
     } catch {
-      // ignore
+      setMutationError('Network error. Please try again.')
     }
   }
 
@@ -139,11 +155,22 @@ export default function TaskDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+      <div role="status" aria-live="polite" className="flex min-h-screen items-center justify-center bg-zinc-950">
         <svg className="h-6 w-6 animate-spin text-zinc-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
+      </div>
+    )
+  }
+
+  if (!loading && fetchError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-zinc-950">
+        <p className="text-zinc-500">{fetchError}</p>
+        <button onClick={fetchTask} className="text-sm text-blue-400 underline-offset-2 hover:underline">
+          Retry
+        </button>
       </div>
     )
   }
@@ -197,6 +224,13 @@ export default function TaskDetailPage() {
               <p className="text-sm leading-relaxed text-zinc-400">{task.description}</p>
             )}
           </section>
+
+          {mutationError && (
+            <div role="alert" className="rounded-lg border border-red-800/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
+              {mutationError}
+              <button className="ml-2 underline text-xs" onClick={() => setMutationError(null)}>Dismiss</button>
+            </div>
+          )}
 
           {/* Notes */}
           <section className="flex flex-col gap-2">
