@@ -1,109 +1,190 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import type { Task, TaskFilters } from '@/lib/types'
-import { apiGetTasks, apiGetTask } from '@/lib/api-client'
+import {
+  useQuery,
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  useQueries,
+  type InfiniteData,
+} from '@tanstack/react-query'
+import type { Task, TaskPage, TaskFilters, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
+import { apiGetTasks, apiGetTask, apiCreateTask, apiUpdateTask, apiDeleteTask } from '@/lib/api-client'
 
 const PAGE_SIZE = 50
 
+class NotFoundError extends Error {
+  constructor() { super('Not found') }
+}
+
+// --- Query hooks ---
+
 export function useTaskList(filters: TaskFilters) {
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const { status, sort, parentId } = filters
+  const query = useInfiniteQuery({
+    queryKey: ['tasks', filters] as const,
+    queryFn: ({ pageParam }: { pageParam: number }) => {
+      const params = new URLSearchParams()
+      if (filters.status) params.set('status', filters.status)
+      if (filters.sort) params.set('sort', filters.sort)
+      if (filters.parentId !== undefined) {
+        params.set('parentId', filters.parentId === null ? 'null' : filters.parentId)
+      }
+      params.set('page', String(pageParam))
+      params.set('limit', String(PAGE_SIZE))
+      return apiGetTasks(params)
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage: TaskPage) => {
+      const fetched = (lastPage.page + 1) * lastPage.limit
+      return fetched < lastPage.total ? lastPage.page + 1 : undefined
+    },
+  })
 
-  const fetchPage = useCallback(async (pageNum: number, append: boolean) => {
-    setLoading(true)
-    setError(null)
-    const params = new URLSearchParams()
-    if (status) params.set('status', status)
-    if (sort) params.set('sort', sort)
-    if (parentId !== undefined) params.set('parentId', parentId === null ? 'null' : parentId)
-    params.set('page', String(pageNum))
-    params.set('limit', String(PAGE_SIZE))
-    try {
-      const data = await apiGetTasks(params)
-      setTasks((prev) => append ? [...prev, ...data.tasks] : data.tasks)
-      setTotal(data.total)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch tasks')
-    } finally {
-      setLoading(false)
-    }
-  }, [status, sort, parentId])
+  const tasks = query.data?.pages.flatMap((p) => p.tasks) ?? []
+  const total = query.data?.pages[0]?.total ?? 0
 
-  // When filters change, reset to page 0
-  useEffect(() => {
-    setPage(0)
-    fetchPage(0, false)
-  }, [fetchPage])
+  return {
+    tasks,
+    total,
+    hasMore: query.hasNextPage,
+    loadMore: query.fetchNextPage,
+    isFetchingMore: query.isFetchingNextPage,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+  }
+}
 
-  const refetch = useCallback(() => {
-    setPage(0)
-    fetchPage(0, false)
-  }, [fetchPage])
-
-  const loadMore = useCallback(() => {
-    const next = page + 1
-    setPage(next)
-    fetchPage(next, true)
-  }, [page, fetchPage])
-
-  const hasMore = tasks.length < total
-
-  return { tasks, setTasks, total, hasMore, loadMore, loading, error, refetch }
+export function useSubtaskCounts(tasks: Task[]) {
+  const queries = useQueries({
+    queries: tasks.map((task) => ({
+      queryKey: ['subtask-count', task.id] as const,
+      queryFn: async () => {
+        const data = await apiGetTasks(new URLSearchParams({ parentId: task.id, limit: '1' }))
+        return data.total
+      },
+      staleTime: 30_000,
+    })),
+  })
+  return Object.fromEntries(tasks.map((task, i) => [task.id, queries[i]?.data ?? 0]))
 }
 
 export function useTask(id: string) {
-  const [task, setTask] = useState<Task | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [notFound, setNotFound] = useState(false)
-
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      // Check 404 before using the typed wrapper
+  const query = useQuery({
+    queryKey: ['task', id] as const,
+    queryFn: async () => {
       const res = await fetch(`/api/tasks/${id}`)
-      if (res.status === 404) { setNotFound(true); return }
+      if (res.status === 404) throw new NotFoundError()
       if (!res.ok) throw new Error('Failed to fetch task')
-      setTask(await apiGetTask(id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch task')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  useEffect(() => { refetch() }, [refetch])
-
-  return { task, setTask, loading, error, notFound, refetch }
+      return res.json() as Promise<Task>
+    },
+    retry: (_, error) => !(error instanceof NotFoundError),
+  })
+  return {
+    task: query.data ?? null,
+    loading: query.isLoading,
+    error: query.error instanceof NotFoundError ? null : (query.error?.message ?? null),
+    notFound: query.error instanceof NotFoundError,
+    refetch: query.refetch,
+  }
 }
 
 export function useSubtasks(parentId: string) {
-  const [subtasks, setSubtasks] = useState<Task[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const query = useQuery({
+    queryKey: ['subtasks', parentId] as const,
+    queryFn: async () => {
+      const data = await apiGetTasks(new URLSearchParams({ parentId, limit: '100' }))
+      return data.tasks
+    },
+  })
+  return {
+    subtasks: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+  }
+}
 
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    const params = new URLSearchParams({ parentId, limit: '100' })
-    try {
-      // limit=100: a task won't realistically have >100 subtasks
-      const data = await apiGetTasks(params)
-      setSubtasks(data.tasks)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch subtasks')
-    } finally {
-      setLoading(false)
-    }
-  }, [parentId])
+// --- Mutation hooks ---
 
-  useEffect(() => { refetch() }, [refetch])
+export function useCreateTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateTaskInput) => apiCreateTask(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['subtasks'] })
+      qc.invalidateQueries({ queryKey: ['subtask-count'] })
+    },
+  })
+}
 
-  return { subtasks, loading, error, refetch }
+export function useUpdateTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateTaskInput }) => apiUpdateTask(id, input),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['task', id] })
+      qc.invalidateQueries({ queryKey: ['subtasks'] })
+    },
+  })
+}
+
+export function useDeleteTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiDeleteTask(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['subtasks'] })
+      qc.invalidateQueries({ queryKey: ['subtask-count'] })
+    },
+  })
+}
+
+export function useUpdateTaskStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ taskId, status }: { taskId: string; status: TaskStatus }) =>
+      apiUpdateTask(taskId, { status }),
+    onMutate: async ({ taskId, status }) => {
+      await qc.cancelQueries({ queryKey: ['tasks'] })
+      await qc.cancelQueries({ queryKey: ['task', taskId] })
+      await qc.cancelQueries({ queryKey: ['subtasks'] })
+
+      const prevLists = qc.getQueriesData<InfiniteData<TaskPage>>({ queryKey: ['tasks'] })
+      const prevTask = qc.getQueryData<Task>(['task', taskId])
+      const prevSubtasks = qc.getQueriesData<Task[]>({ queryKey: ['subtasks'] })
+
+      qc.setQueriesData<InfiniteData<TaskPage>>({ queryKey: ['tasks'] }, (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            tasks: page.tasks.map((t) => t.id === taskId ? { ...t, status } : t),
+          })),
+        }
+      })
+
+      if (prevTask) qc.setQueryData<Task>(['task', taskId], { ...prevTask, status })
+
+      qc.setQueriesData<Task[]>({ queryKey: ['subtasks'] }, (old) =>
+        old?.map((t) => t.id === taskId ? { ...t, status } : t)
+      )
+
+      return { prevLists, prevTask, prevSubtasks }
+    },
+    onError: (_, __, ctx) => {
+      if (!ctx) return
+      ctx.prevLists.forEach(([key, data]) => qc.setQueryData(key, data))
+      if (ctx.prevTask) qc.setQueryData(['task', ctx.prevTask.id], ctx.prevTask)
+      ctx.prevSubtasks.forEach(([key, data]) => qc.setQueryData(key, data))
+    },
+    onSettled: (_, __, { taskId }) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['task', taskId] })
+      qc.invalidateQueries({ queryKey: ['subtasks'] })
+    },
+  })
 }

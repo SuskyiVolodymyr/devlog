@@ -2,9 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useTask, useSubtasks } from '@/lib/hooks/useTasks'
+import {
+  useTask,
+  useSubtasks,
+  useCreateTask,
+  useUpdateTask,
+  useDeleteTask,
+  useUpdateTaskStatus,
+} from '@/lib/hooks/useTasks'
 import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
-import { apiCreateTask, apiUpdateTask, apiDeleteTask } from '@/lib/api-client'
 import StatusBadge from '@/components/StatusBadge'
 import PriorityBadge from '@/components/PriorityBadge'
 import TaskCard from '@/components/TaskCard'
@@ -16,22 +22,27 @@ export default function TaskDetailPage() {
   const router = useRouter()
   const id = params.id as string
 
-  const { task, setTask, loading, error: fetchError, notFound, refetch: fetchTask } = useTask(id)
+  const { task, loading, error: fetchError, notFound, refetch: fetchTask } = useTask(id)
   const { subtasks, refetch: fetchSubtasks } = useSubtasks(id)
+
+  const createTaskMutation = useCreateTask()
+  const updateTaskMutation = useUpdateTask()
+  const deleteTaskMutation = useDeleteTask()
+  const updateStatusMutation = useUpdateTaskStatus()
 
   const [notesValue, setNotesValue] = useState('')
   const [showSubtaskForm, setShowSubtaskForm] = useState(false)
   const [editingSubtask, setEditingSubtask] = useState<Task | undefined>(undefined)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
-  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Clear pending save on unmount to avoid setState after unmount
-  useEffect(() => () => { if (saveTimeout.current) clearTimeout(saveTimeout.current) }, [])
-
-  // Sync notesValue when task loads
+  // Only initialize notes once on first load — don't reset while user is editing
+  const notesInitialized = useRef(false)
   useEffect(() => {
-    if (task) setNotesValue(task.notes ?? '')
+    if (task && !notesInitialized.current) {
+      setNotesValue(task.notes ?? '')
+      notesInitialized.current = true
+    }
   }, [task])
 
   // Redirect on not found
@@ -49,62 +60,42 @@ export default function TaskDetailPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [aiPanelOpen])
 
-  const handleNotesBlur = useCallback(async () => {
+  const handleNotesBlur = useCallback(() => {
     if (!task || notesValue === task.notes) return
-    try {
-      await apiUpdateTask(id, { notes: notesValue })
-      setTask((prev) => prev ? { ...prev, notes: notesValue } : prev)
-    } catch {
-      setMutationError('Failed to save notes')
-    }
-  }, [id, task, notesValue, setTask])
+    updateTaskMutation.mutate({ id, input: { notes: notesValue } }, {
+      onError: () => setMutationError('Failed to save notes'),
+    })
+  }, [id, task, notesValue, updateTaskMutation])
 
-  const handleStatusChange = useCallback(async (taskId: string, status: TaskStatus) => {
-    const previousStatus = taskId === id ? task?.status : subtasks.find((s) => s.id === taskId)?.status
-    if (taskId === id) setTask((prev) => prev ? { ...prev, status } : prev)
-    try {
-      await apiUpdateTask(taskId, { status })
-      if (taskId !== id) fetchSubtasks()
-    } catch {
-      if (taskId === id) setTask((prev) => prev ? { ...prev, status: previousStatus ?? prev.status } : prev)
-      else fetchSubtasks()
-      setMutationError('Failed to update status')
-    }
-  }, [id, task, subtasks, setTask, fetchSubtasks])
+  const handleStatusChange = useCallback((taskId: string, status: TaskStatus) => {
+    updateStatusMutation.mutate({ taskId, status }, {
+      onError: () => setMutationError('Failed to update status'),
+    })
+  }, [updateStatusMutation])
 
-  const handleCreateSubtask = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
+  const handleCreateSubtask = useCallback((input: CreateTaskInput | UpdateTaskInput) => {
     setMutationError(null)
-    try {
-      await apiCreateTask({ ...(input as CreateTaskInput), parentId: id })
-      setShowSubtaskForm(false)
-      fetchSubtasks()
-    } catch (err) {
-      setMutationError(err instanceof Error ? err.message : 'Failed to create subtask')
-    }
-  }, [id, fetchSubtasks])
+    createTaskMutation.mutate({ ...(input as CreateTaskInput), parentId: id }, {
+      onSuccess: () => setShowSubtaskForm(false),
+      onError: (err) => setMutationError(err instanceof Error ? err.message : 'Failed to create subtask'),
+    })
+  }, [id, createTaskMutation])
 
-  const handleUpdateSubtask = useCallback(async (input: CreateTaskInput | UpdateTaskInput) => {
+  const handleUpdateSubtask = useCallback((input: CreateTaskInput | UpdateTaskInput) => {
     if (!editingSubtask) return
     setMutationError(null)
-    try {
-      await apiUpdateTask(editingSubtask.id, input as UpdateTaskInput)
-      setEditingSubtask(undefined)
-      setShowSubtaskForm(false)
-      fetchSubtasks()
-    } catch (err) {
-      setMutationError(err instanceof Error ? err.message : 'Failed to update subtask')
-    }
-  }, [editingSubtask, fetchSubtasks])
+    updateTaskMutation.mutate({ id: editingSubtask.id, input: input as UpdateTaskInput }, {
+      onSuccess: () => { setEditingSubtask(undefined); setShowSubtaskForm(false) },
+      onError: (err) => setMutationError(err instanceof Error ? err.message : 'Failed to update subtask'),
+    })
+  }, [editingSubtask, updateTaskMutation])
 
-  const handleDeleteSubtask = useCallback(async (subtaskId: string) => {
+  const handleDeleteSubtask = useCallback((subtaskId: string) => {
     setMutationError(null)
-    try {
-      await apiDeleteTask(subtaskId)
-      fetchSubtasks()
-    } catch (err) {
-      setMutationError(err instanceof Error ? err.message : 'Failed to delete subtask')
-    }
-  }, [fetchSubtasks])
+    deleteTaskMutation.mutate(subtaskId, {
+      onError: (err) => setMutationError(err instanceof Error ? err.message : 'Failed to delete subtask'),
+    })
+  }, [deleteTaskMutation])
 
   const openEditSubtask = useCallback((t: Task) => {
     setEditingSubtask(t)
@@ -131,7 +122,7 @@ export default function TaskDetailPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-zinc-950">
         <p className="text-zinc-500">{fetchError}</p>
-        <button onClick={fetchTask} className="text-sm text-blue-400 underline-offset-2 hover:underline">
+        <button onClick={() => fetchTask()} className="text-sm text-blue-400 underline-offset-2 hover:underline">
           Retry
         </button>
       </div>
