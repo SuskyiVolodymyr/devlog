@@ -1,6 +1,6 @@
 import { type NextRequest } from 'next/server'
 import { getTask, updateTask, deleteTask } from '@/lib/db'
-import { TASK_STATUSES, TASK_PRIORITIES } from '@/lib/constants'
+import { updateTaskSchema } from '@/lib/schemas'
 
 export async function GET(
   _request: NextRequest,
@@ -23,16 +23,11 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-      return Response.json({ error: 'Invalid request body' }, { status: 400 })
+    const result = updateTaskSchema.safeParse(body)
+    if (!result.success) {
+      return Response.json({ error: result.error.issues[0].message }, { status: 400 })
     }
-    if (body.status !== undefined && !TASK_STATUSES.includes(body.status)) {
-      return Response.json({ error: 'Invalid status' }, { status: 400 })
-    }
-    if (body.priority !== undefined && !TASK_PRIORITIES.includes(body.priority)) {
-      return Response.json({ error: 'Invalid priority' }, { status: 400 })
-    }
-    const task = updateTask(id, body)
+    const task = updateTask(id, result.data)
     if (!task) return Response.json({ error: 'Task not found' }, { status: 404 })
     return Response.json(task)
   } catch {
