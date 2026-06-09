@@ -60,7 +60,7 @@ export const createTaskTool: Anthropic.Tool = {
         description: 'Parent task ID — set this to make the new task a subtask.',
       },
     },
-    required: ['title', 'description', 'parentId'],
+    required: ['title', 'description'],
   },
 }
 
