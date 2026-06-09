@@ -34,3 +34,10 @@ export interface TaskFilters {
   parentId?: string | null // null = top-level only, string = subtasks of that id
   sort?: 'priority' | 'date'
 }
+
+export interface TaskPage {
+  tasks: Task[]
+  total: number
+  page: number
+  limit: number
+}
