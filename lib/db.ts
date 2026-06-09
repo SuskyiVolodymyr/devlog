@@ -107,10 +107,7 @@ export function updateTask(id: string, input: UpdateTaskInput): Task | null {
   const fields = Object.keys(input) as (keyof UpdateTaskInput)[]
   if (fields.length === 0) return existing
 
-  const setClauses = fields.map((f) => {
-    const col = f === 'parentId' ? 'parent_id' : f
-    return `${col} = ?`
-  })
+  const setClauses = fields.map((f) => `${f} = ?`)
   const values = fields.map((f) => input[f] ?? null)
 
   db.prepare(`UPDATE tasks SET ${setClauses.join(', ')} WHERE id = ?`).run(...values, id)
