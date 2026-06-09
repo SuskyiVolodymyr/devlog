@@ -1,10 +1,7 @@
 'use client'
 
+import Badge from '@/components/Badge'
 import type { TaskStatus } from '@/lib/types'
-
-interface StatusBadgeProps {
-  status: TaskStatus
-}
 
 const statusConfig: Record<TaskStatus, { label: string; className: string }> = {
   'todo': { label: 'Todo', className: 'bg-zinc-700 text-zinc-300' },
@@ -12,11 +9,7 @@ const statusConfig: Record<TaskStatus, { label: string; className: string }> = {
   'done': { label: 'Done', className: 'bg-green-900 text-green-300' },
 }
 
-export default function StatusBadge({ status }: StatusBadgeProps) {
+export default function StatusBadge({ status }: { status: TaskStatus }) {
   const { label, className } = statusConfig[status]
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>
-      {label}
-    </span>
-  )
+  return <Badge label={label} className={className} />
 }
