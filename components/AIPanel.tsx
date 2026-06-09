@@ -11,11 +11,14 @@ function renderMarkdown(text: string): React.ReactNode {
   let listItems: React.ReactNode[] = []
 
   function inline(s: string) {
-    return s.split(/(\*\*[^*]+\*\*)/).map((p, i) =>
-      p.startsWith('**') && p.endsWith('**')
-        ? <strong key={i} className="font-semibold text-zinc-100">{p.slice(2, -2)}</strong>
-        : p
-    )
+    return s.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]*\))/).map((p, i) => {
+      if (p.startsWith('**') && p.endsWith('**'))
+        return <strong key={i} className="font-semibold text-zinc-100">{p.slice(2, -2)}</strong>
+      const linkMatch = p.match(/^\[([^\]]+)\]\([^)]*\)$/)
+      if (linkMatch)
+        return <strong key={i} className="font-semibold text-zinc-100">{linkMatch[1]}</strong>
+      return p
+    })
   }
 
   function flushList() {
@@ -65,6 +68,8 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   const [expanded, setExpanded] = useState(false)
   const [prioritizeText, setPrioritizeText] = useState<string>('')
   const [prioritizeModalOpen, setPrioritizeModalOpen] = useState(false)
+  const [backlogText, setBacklogText] = useState<string>('')
+  const [backlogModalOpen, setBacklogModalOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const clarificationRef = useRef<HTMLTextAreaElement>(null)
 
@@ -73,16 +78,17 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   }, [])
 
   useEffect(() => {
-    if (!expanded && !prioritizeModalOpen) return
+    if (!expanded && !prioritizeModalOpen && !backlogModalOpen) return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setExpanded(false)
         setPrioritizeModalOpen(false)
+        setBacklogModalOpen(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [expanded, prioritizeModalOpen])
+  }, [expanded, prioritizeModalOpen, backlogModalOpen])
 
   // Tick elapsed seconds while a request is in flight
   useEffect(() => {
@@ -157,6 +163,8 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
             }
             if (action === 'prioritize') {
               setPrioritizeText(accumulated)
+            } else if (action === 'backlog-review') {
+              setBacklogText(accumulated)
             } else {
               setResponse(accumulated)
             }
@@ -198,8 +206,8 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
         }
       })()
 
-      // Prioritize result already streamed into the modal — nothing left to do
-      if (action === 'prioritize') return
+      // Modal actions already streamed — nothing left to do
+      if (action === 'prioritize' || action === 'backlog-review') return
 
       if (!responseText.trim()) {
         setResponse('No response from agent. Please try again.')
@@ -225,6 +233,10 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
     if (action === 'prioritize') {
       setPrioritizeText('')
       setPrioritizeModalOpen(true)
+    }
+    if (action === 'backlog-review') {
+      setBacklogText('')
+      setBacklogModalOpen(true)
     }
     callAgent(action)
   }
@@ -456,6 +468,109 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
         Today&apos;s focus
       </button>
     )}
+
+    {/* FAB — re-open backlog review result when modal is dismissed */}
+    {backlogText && !backlogModalOpen && loading === null && (
+      <button
+        onClick={() => setBacklogModalOpen(true)}
+        aria-label="Backlog review"
+        className={`fixed right-6 z-40 flex items-center gap-2 rounded-full bg-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-100 shadow-lg transition-all duration-200 hover:bg-zinc-600 hover:shadow-xl ${prioritizeText && !prioritizeModalOpen ? 'bottom-20' : 'bottom-6'}`}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+          <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+        </svg>
+        Backlog review
+      </button>
+    )}
+
+    {/* Backlog review modal */}
+    {backlogModalOpen && (() => {
+      const SENTINEL = '[FLAGGED_JSON]'
+      const sepIdx = backlogText.indexOf(SENTINEL)
+      const displayText = sepIdx >= 0 ? backlogText.slice(0, sepIdx).trimEnd() : backlogText
+      let taskRefs: TaskRef[] = []
+      if (loading === null && sepIdx >= 0) {
+        try { taskRefs = JSON.parse(backlogText.slice(sepIdx + SENTINEL.length).trim()) as TaskRef[] } catch {}
+      }
+      return (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => { if (loading === null) setBacklogModalOpen(false) }}
+        >
+          <div
+            className="flex w-full max-w-lg flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                  <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+                </svg>
+                <span className="text-sm font-semibold text-zinc-200">Backlog Review</span>
+              </div>
+              {loading === null && (
+                <button
+                  onClick={() => setBacklogModalOpen(false)}
+                  aria-label="Close"
+                  className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Streaming body */}
+            <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
+              {displayText ? (
+                renderMarkdown(displayText)
+              ) : (
+                <div className="flex items-center gap-2 text-zinc-500">
+                  <svg className="h-4 w-4 animate-spin text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Reviewing backlog…
+                </div>
+              )}
+            </div>
+
+            {/* Task chips — appear after streaming completes */}
+            {taskRefs.length > 0 && (
+              <div className="mx-5 mb-4 flex flex-col gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Needs attention</p>
+                <div className="flex flex-wrap gap-2">
+                  {taskRefs.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => { router.push(`/tasks/${t.id}`); setBacklogModalOpen(false) }}
+                      className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-700 hover:text-white"
+                    >
+                      {t.title} →
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex justify-end border-t border-zinc-800 px-5 py-3">
+              <button
+                onClick={() => setBacklogModalOpen(false)}
+                disabled={loading !== null}
+                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {loading !== null ? 'Reviewing…' : 'Got it'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    })()}
     </>
   )
 }
