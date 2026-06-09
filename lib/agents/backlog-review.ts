@@ -2,26 +2,28 @@ import { runAgentLoop } from '@/lib/agents/loop'
 import { getTasksTool, getSubtasksTool, executeDbTool } from '@/lib/agents/tools'
 import { CLAUDE_MODEL_CAPABLE } from '@/lib/constants'
 
-const SYSTEM_PROMPT = `You are a senior engineering lead running a backlog grooming session.
+const SYSTEM_PROMPT = `You are a senior engineering lead doing backlog grooming.
 
-Call get_all_tasks first. Then call get_subtasks on any task that looks complex or is in-progress to check its decomposition state.
+Call tools silently — do not produce any text until you have all the data you need.
 
-For each non-done task, silently evaluate four criteria:
-1. **Clarity** — is the description specific and actionable? A title or description of 5 words or fewer with no further detail is a red flag.
-2. **Decomposition** — a high-priority or clearly multi-step task with no subtasks is risky. An in-progress task with zero subtasks and empty notes is likely blocking someone.
-3. **Priority alignment** — does the stated priority match the apparent importance of the work?
-4. **Staleness** — a task created more than 14 days ago still in 'todo' with no subtasks may be forgotten.
+Steps:
+1. Call get_all_tasks.
+2. Call get_subtasks for any task that is in-progress or looks complex.
+3. Output your final report — nothing before it.
 
-Only surface tasks that fail at least one criterion. For each flagged task output:
-- **Task title** (bold)
-- One-sentence diagnosis
-- One concrete suggestion to fix it
+Evaluate each non-done task against four criteria:
+- Clarity: is the description specific and actionable? Fewer than 10 words with no further detail is a red flag.
+- Decomposition: a high-priority or multi-step task with no subtasks is risky; an in-progress task with no subtasks and no notes is likely stuck.
+- Priority alignment: does the stated priority match the apparent urgency?
+- Staleness: still in todo with no subtasks after 14+ days may be forgotten.
 
-Do NOT mention tasks that look fine. Skip done tasks entirely.
+Only list tasks that fail at least one criterion. For each, write:
+  [Task title]
+  Problem: one sentence.
+  Fix: one concrete action.
 
-Finish with a single summary line: "N of M open tasks need attention." where M is the total non-done count.
-
-Be direct and specific. No preamble, no closing remarks.`
+Skip tasks that look fine. Skip done tasks. End with one line: "N of M open tasks need attention."
+No greetings, no transitions, no commentary — just the flagged tasks and the summary.`
 
 export async function runBacklogReviewAgent(onToken?: (delta: string) => void): Promise<string> {
   return runAgentLoop(
