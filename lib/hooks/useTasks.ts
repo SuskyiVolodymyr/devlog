@@ -9,7 +9,7 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query'
 import type { Task, TaskPage, TaskFilters, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
-import { apiGetTasks, apiGetTask, apiCreateTask, apiUpdateTask, apiDeleteTask } from '@/lib/api-client'
+import { apiGetTasks, apiCreateTask, apiUpdateTask, apiDeleteTask } from '@/lib/api-client'
 
 const PAGE_SIZE = 50
 
