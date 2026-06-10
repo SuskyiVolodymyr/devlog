@@ -12,10 +12,8 @@ export const CLAUDE_MODEL_FAST = process.env.CLAUDE_MODEL_FAST ?? 'claude-haiku-
 
 export const DB_PATH = process.env.DB_PATH ?? './devlog.db'
 
-export type AIActionKey = 'prioritize' | 'decompose' | 'status-update' | 'backlog-review'
-
-export interface AIAction {
-  key: AIActionKey
+interface AIActionDef {
+  key: string
   label: string
   description: string
   /** true = only shown when viewing a specific task */
@@ -26,12 +24,16 @@ export interface AIAction {
   route: string
 }
 
-export const AI_ACTIONS: readonly AIAction[] = [
+export const AI_ACTIONS = [
   { key: 'prioritize',    label: 'Prioritize',      description: 'Recommend where to start based on all tasks',  taskOnly: false, boardOnly: true,  route: 'prioritize'    },
   { key: 'backlog-review', label: 'Backlog Review', description: 'Flag vague, stuck, or under-decomposed tasks', taskOnly: false, boardOnly: true,  route: 'backlog-review' },
   { key: 'decompose',    label: 'Decompose',       description: 'Break this task into subtasks',                  taskOnly: true,  boardOnly: false, route: 'decompose'     },
   { key: 'status-update', label: 'Status Update',  description: 'Draft a Slack-style update for this task',      taskOnly: true,  boardOnly: false, route: 'status-update' },
-]
+] as const satisfies readonly AIActionDef[]
+
+// Derived from the registry — the type can't drift from the array
+export type AIAction = (typeof AI_ACTIONS)[number]
+export type AIActionKey = AIAction['key']
 
 export function buildAgentUrl(action: AIActionKey, taskId?: string): string {
   const def = AI_ACTIONS.find((a) => a.key === action)

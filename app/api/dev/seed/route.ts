@@ -5,7 +5,7 @@ import { createTask } from '@/lib/db'
 export async function POST() {
   try {
     // --- Clear, well-defined tasks ---
-    const ci = createTask({
+    createTask({
       title: 'Set up CI/CD pipeline',
       description: 'Configure GitHub Actions to run tests on every PR and deploy to staging on merge to develop. Include lint, type-check, and test steps. Add a Slack notification on failure.',
       status: 'todo',
@@ -24,7 +24,7 @@ export async function POST() {
     createTask({ title: 'Document /api/tasks/[id] PUT and DELETE', description: 'Include cascade delete behaviour for subtasks.', status: 'todo', parentId: docs.id })
     createTask({ title: 'Document /api/ai/* endpoints', description: 'Cover all three agent routes, request body, SSE response format.', status: 'todo', parentId: docs.id })
 
-    const perf = createTask({
+    createTask({
       title: 'Investigate slow task list queries',
       description: 'The GET /api/tasks endpoint takes 800ms+ on a 500-task board. Profile the SQLite query, check index usage with EXPLAIN QUERY PLAN, and add indexes if missing.',
       status: 'todo',

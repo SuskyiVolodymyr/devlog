@@ -2,68 +2,55 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { AI_ACTIONS, buildAgentUrl, type AIActionKey } from '@/lib/constants'
+import { AI_ACTIONS, type AIActionKey } from '@/lib/constants'
+import { useAgentStream } from '@/lib/hooks/useAgentStream'
+import AgentModal from '@/components/AgentModal'
+import {
+  proseBefore,
+  parsePrioritizeRef,
+  parseFlaggedRefs,
+  PRIORITIZE_SENTINEL,
+  FLAGGED_SENTINEL,
+} from '@/lib/agents/output'
 
-type TaskRef = { id: string; title: string }
-
-const CURSOR = (
-  <span
-    key="cursor"
-    className="ml-0.5 inline-block h-[0.85em] w-0.5 align-middle"
-    style={{ animation: 'blink 1s step-start infinite', background: 'rgb(161 161 170)' }}
-  />
+const SPARKLES_ICON = (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+    <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
+  </svg>
 )
 
-function renderMarkdown(text: string, streaming = false): React.ReactNode {
-  const elements: React.ReactNode[] = []
-  let listItems: React.ReactNode[] = []
+const CLIPBOARD_ICON = (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+    <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+    <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+  </svg>
+)
 
-  function inline(s: string, appendCursor = false) {
-    const parts = s.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]*\))/).map((p, i) => {
-      if (p.startsWith('**') && p.endsWith('**'))
-        return <strong key={i} className="font-semibold text-zinc-100">{p.slice(2, -2)}</strong>
-      const linkMatch = p.match(/^\[([^\]]+)\]\([^)]*\)$/)
-      if (linkMatch)
-        return <strong key={i} className="font-semibold text-zinc-100">{linkMatch[1]}</strong>
-      return p
-    })
-    if (appendCursor) parts.push(CURSOR)
-    return parts
-  }
+const CHAT_ICON = (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
+    <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+  </svg>
+)
 
-  const lines = text.split('\n')
-  lines.forEach((line, i) => {
-    const isLast = i === lines.length - 1
-    if (!line.trim()) { flushList(); return }
-    if (line.startsWith('• ') || line.startsWith('- ')) {
-      listItems.push(
-        <li key={i} className="flex items-start gap-2 text-zinc-300">
-          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
-          <span>{inline(line.slice(2), streaming && isLast)}</span>
-        </li>
-      )
-    } else {
-      flushList()
-      elements.push(<p key={i} className="text-zinc-200">{inline(line, streaming && isLast)}</p>)
-    }
-  })
-
-  function flushList() {
-    if (!listItems.length) return
-    elements.push(
-      <ul key={`ul-${elements.length}`} className="flex flex-col gap-1.5">
-        {listItems}
-      </ul>
-    )
-    listItems = []
-  }
-
-  flushList()
-  return elements
+interface AgentFabProps {
+  onClick: () => void
+  label: string
+  icon: React.ReactNode
+  className: string
 }
 
-
-type ActionKey = AIActionKey
+function AgentFab({ onClick, label, icon, className }: AgentFabProps) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      className={`fixed right-6 z-40 flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium shadow-lg transition-all duration-200 hover:shadow-xl ${className}`}
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}
 
 interface AIPanelProps {
   taskId?: string
@@ -72,75 +59,25 @@ interface AIPanelProps {
 
 export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   const router = useRouter()
-  const [loading, setLoading] = useState<ActionKey | null>(null)
-  const [response, setResponse] = useState<string>('')
-  const [activeAction, setActiveAction] = useState<ActionKey | null>(null)
+  const {
+    loading, elapsed, activeAction, response, awaitingClarification,
+    modals, runAction, sendClarification, setModalOpen,
+  } = useAgentStream(taskId, onRefresh)
+
   const [clarification, setClarification] = useState('')
-  const [awaitingClarification, setAwaitingClarification] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
   const [expanded, setExpanded] = useState(false)
-  const [prioritizeText, setPrioritizeText] = useState<string>('')
-  const [prioritizeVisible, setPrioritizeVisible] = useState(0)
-  const [prioritizeModalOpen, setPrioritizeModalOpen] = useState(false)
-  const [backlogText, setBacklogText] = useState<string>('')
-  const [backlogVisible, setBacklogVisible] = useState(0)
-  const [backlogModalOpen, setBacklogModalOpen] = useState(false)
-  const [statusText, setStatusText] = useState<string>('')
-  const [statusVisible, setStatusVisible] = useState(0)
-  const [statusModalOpen, setStatusModalOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const clarificationRef = useRef<HTMLTextAreaElement>(null)
 
+  // Escape closes the expanded panel-response modal (AgentModal handles its own)
   useEffect(() => {
-    return () => { abortRef.current?.abort() }
-  }, [])
-
-  useEffect(() => {
-    if (!expanded && !prioritizeModalOpen && !backlogModalOpen && !statusModalOpen) return
+    if (!expanded) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setExpanded(false)
-        setPrioritizeModalOpen(false)
-        setBacklogModalOpen(false)
-        setStatusModalOpen(false)
-      }
+      if (e.key === 'Escape') setExpanded(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [expanded, prioritizeModalOpen, backlogModalOpen, statusModalOpen])
-
-  // Typewriter animation — advance visible character count each frame
-  useEffect(() => {
-    if (prioritizeVisible >= prioritizeText.length) return
-    const id = requestAnimationFrame(() =>
-      setPrioritizeVisible(v => Math.min(v + (loading === null ? 20 : 4), prioritizeText.length))
-    )
-    return () => cancelAnimationFrame(id)
-  }, [prioritizeText, prioritizeVisible, loading])
-
-  useEffect(() => {
-    if (backlogVisible >= backlogText.length) return
-    const id = requestAnimationFrame(() =>
-      setBacklogVisible(v => Math.min(v + (loading === null ? 20 : 4), backlogText.length))
-    )
-    return () => cancelAnimationFrame(id)
-  }, [backlogText, backlogVisible, loading])
-
-  useEffect(() => {
-    if (statusVisible >= statusText.length) return
-    const id = requestAnimationFrame(() =>
-      setStatusVisible(v => Math.min(v + (loading === null ? 20 : 4), statusText.length))
-    )
-    return () => cancelAnimationFrame(id)
-  }, [statusText, statusVisible, loading])
-
-  // Tick elapsed seconds while a request is in flight
-  useEffect(() => {
-    if (loading === null) { setElapsed(0); return }
-    const interval = setInterval(() => setElapsed((s) => s + 1), 1000)
-    return () => clearInterval(interval)
-  }, [loading])
+  }, [expanded])
 
   // Auto-focus clarification textarea when it appears
   useEffect(() => {
@@ -149,169 +86,22 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
     }
   }, [awaitingClarification, loading])
 
-  async function callAgent(action: ActionKey, body?: Record<string, string>) {
-    abortRef.current?.abort()
-    abortRef.current = new AbortController()
-    // 90s — generous enough for multi-step agentic loops over SSE
-    const timeout = setTimeout(() => abortRef.current?.abort(), 90_000)
-
-    setLoading(action)
-    setResponse('')
-
-    try {
-      const res = await fetch(buildAgentUrl(action, taskId), {
-        method: 'POST',
-        headers: body ? { 'Content-Type': 'application/json' } : {},
-        body: body ? JSON.stringify(body) : undefined,
-        signal: abortRef.current.signal,
-      })
-
-      let rawText: string
-      if (!res.ok) {
-        // Safely read the error body — it may be HTML or plain text
-        rawText = await res.text()
-        try {
-          const json = JSON.parse(rawText) as { error?: string }
-          setResponse(`Error: ${json.error ?? 'Something went wrong'}`)
-        } catch {
-          setResponse(`Error: ${res.status} ${res.statusText}`)
-        }
-        return
-      }
-
-      const contentType = res.headers.get('content-type') ?? ''
-
-      if (contentType.includes('text/event-stream')) {
-        const reader = res.body?.getReader()
-        if (!reader) return
-        const decoder = new TextDecoder()
-        let accumulated = ''
-        let rafId: number | null = null
-
-        // Batch state updates to one per animation frame — eliminates per-token re-renders
-        const flush = () => {
-          rafId = null
-          if (action === 'prioritize') setPrioritizeText(accumulated)
-          else if (action === 'backlog-review') setBacklogText(accumulated)
-          else if (action === 'status-update') setStatusText(accumulated)
-          else setResponse(accumulated)
-        }
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          const chunk = decoder.decode(value, { stream: true })
-          for (const line of chunk.split('\n')) {
-            if (!line.startsWith('data: ')) continue
-            const data = line.slice(6)
-            if (data === '[DONE]') break
-            if (data.startsWith('[ERROR] ')) {
-              if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null }
-              accumulated = `Error: ${data.slice(8)}`
-              setResponse(accumulated)
-              break
-            }
-            try {
-              accumulated += (JSON.parse(data) as { d: string }).d
-            } catch {
-              accumulated += data
-            }
-            if (rafId === null) rafId = requestAnimationFrame(flush)
-          }
-        }
-        // Final flush — pick up any tokens not yet committed
-        if (rafId !== null) cancelAnimationFrame(rafId)
-        flush()
-        rawText = accumulated
-      } else {
-        rawText = await res.text()
-      }
-
-      const responseText = (() => {
-        try {
-          const json = JSON.parse(rawText) as { result?: string; needsClarification?: boolean }
-          // For decompose, prefer explicit field, fall back to heuristic
-          if (action === 'decompose') {
-            const needsClarification = json.needsClarification ?? rawText.trimEnd().endsWith('?')
-            if (needsClarification) {
-              setAwaitingClarification(true)
-            } else {
-              setAwaitingClarification(false)
-              setClarification('')
-              onRefresh?.()
-            }
-          }
-          return json.result ?? rawText
-        } catch {
-          // Plain text / SSE accumulated string
-          if (action === 'decompose') {
-            const needsClarification = rawText.trimEnd().endsWith('?')
-            if (needsClarification) {
-              setAwaitingClarification(true)
-            } else {
-              setAwaitingClarification(false)
-              setClarification('')
-              onRefresh?.()
-            }
-          }
-          return rawText
-        }
-      })()
-
-      // Modal actions already streamed — nothing left to do
-      if (action === 'prioritize' || action === 'backlog-review' || action === 'status-update') return
-
-      if (!responseText.trim()) {
-        setResponse('No response from agent. Please try again.')
-      } else {
-        setResponse(responseText)
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        setResponse('Request timed out or cancelled. Please try again.')
-      } else {
-        setResponse(`Error: ${err instanceof Error ? err.message : 'Network error'}`)
-      }
-    } finally {
-      clearTimeout(timeout)
-      setLoading(null)
-    }
+  function handleRun(action: AIActionKey) {
+    setClarification('')
+    if (action === 'status-update') setCopyState('idle')
+    runAction(action)
   }
 
-  function runAction(action: ActionKey) {
-    setActiveAction(action)
-    setAwaitingClarification(false)
-    setClarification('')
-    if (action === 'prioritize') {
-      setPrioritizeText('')
-      setPrioritizeVisible(0)
-      setPrioritizeModalOpen(true)
-    }
-    if (action === 'backlog-review') {
-      setBacklogText('')
-      setBacklogVisible(0)
-      setBacklogModalOpen(true)
-    }
-    if (action === 'status-update') {
-      setStatusText('')
-      setStatusVisible(0)
-      setCopied(false)
-      setStatusModalOpen(true)
-    }
-    callAgent(action)
+  function handleSendClarification() {
+    sendClarification(clarification)
   }
 
   function copyStatusUpdate() {
     // Slack renders *single asterisks* as bold
-    navigator.clipboard.writeText(statusText.replace(/\*\*/g, '*')).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }).catch(() => {})
-  }
-
-  function sendClarification() {
-    if (!clarification.trim()) return
-    callAgent('decompose', { clarification: clarification.trim() })
+    navigator.clipboard.writeText(modals['status-update'].text.replace(/\*\*/g, '*'))
+      .then(() => setCopyState('copied'))
+      .catch(() => setCopyState('failed'))
+    setTimeout(() => setCopyState('idle'), 2000)
   }
 
   const visibleActions = AI_ACTIONS.filter((a) => {
@@ -320,13 +110,26 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
     return true
   })
 
+  // Per-modal derived view state: typewriter slice, prose split, parsed refs
+  const pri = modals['prioritize']
+  const priStreaming = pri.visible < pri.text.length
+  const priDisplay = proseBefore(pri.text.slice(0, pri.visible), PRIORITIZE_SENTINEL)
+  const priRef = !priStreaming ? parsePrioritizeRef(pri.text) : null
+
+  const backlog = modals['backlog-review']
+  const backlogStreaming = backlog.visible < backlog.text.length
+  const backlogDisplay = proseBefore(backlog.text.slice(0, backlog.visible), FLAGGED_SENTINEL)
+  const flaggedRefs = !backlogStreaming ? parseFlaggedRefs(backlog.text) : []
+
+  const status = modals['status-update']
+  const statusStreaming = status.visible < status.text.length
+  const statusDisplay = status.text.slice(0, status.visible)
+
   return (
     <>
     <aside className="flex flex-col gap-4 rounded-xl border border-zinc-700/60 bg-zinc-800/40 p-4">
       <div className="flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
-        </svg>
+        {SPARKLES_ICON}
         <h2 className="text-sm font-semibold text-zinc-200">AI Assistant</h2>
       </div>
 
@@ -334,7 +137,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
         {visibleActions.map((action) => (
           <button
             key={action.key}
-            onClick={() => runAction(action.key)}
+            onClick={() => handleRun(action.key)}
             disabled={loading !== null}
             className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               activeAction === action.key && !loading
@@ -395,7 +198,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
                 className="resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
               <button
-                onClick={sendClarification}
+                onClick={handleSendClarification}
                 disabled={!clarification.trim()}
                 className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -407,6 +210,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
       )}
     </aside>
 
+    {/* Expanded view of the inline panel response */}
     {expanded && (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
@@ -439,307 +243,113 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
       </div>
     )}
 
-    {/* Prioritize modal — opens immediately, streams text live */}
-    {prioritizeModalOpen && (() => {
-      const visibleSlice = prioritizeText.slice(0, prioritizeVisible)
-      const sepIdx = visibleSlice.indexOf('\n---')
-      const displayText = sepIdx >= 0 ? visibleSlice.slice(0, sepIdx) : visibleSlice
-      const animDone = prioritizeVisible >= prioritizeText.length
-      let taskRef: TaskRef | null = null
-      if (animDone && prioritizeText.includes('\n---\n')) {
-        try { taskRef = JSON.parse(prioritizeText.split('\n---\n')[1].trim()) as TaskRef } catch {}
-      }
-      const isStreaming = !animDone
-      return (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => { if (loading === null) setPrioritizeModalOpen(false) }}
-        >
-          <div
-            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-5 py-3">
-              <div className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
-                </svg>
-                <span className="text-sm font-semibold text-zinc-200">Prioritize</span>
-              </div>
-              {loading === null && (
-                <button
-                  onClick={() => setPrioritizeModalOpen(false)}
-                  aria-label="Close"
-                  className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            {/* Scrollable body */}
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {/* Streaming body */}
-              <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
-                {displayText ? (
-                  renderMarkdown(displayText, isStreaming)
-                ) : (
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <svg className="h-4 w-4 animate-spin text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Analyzing tasks…
-                  </div>
-                )}
-              </div>
-
-              {/* Task card — appears after animation completes */}
-              {taskRef && (
-                <div className="mx-5 mb-4 flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800/60 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">Start here</p>
-                    <p className="truncate text-sm font-medium text-zinc-100">{taskRef.title}</p>
-                  </div>
-                  <button
-                    onClick={() => { router.push(`/tasks/${taskRef!.id}`); setPrioritizeModalOpen(false) }}
-                    className="ml-4 shrink-0 rounded-lg border border-zinc-600 bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600 hover:text-white"
-                  >
-                    Open →
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex shrink-0 justify-end border-t border-zinc-800 px-5 py-3">
-              <button
-                onClick={() => setPrioritizeModalOpen(false)}
-                disabled={isStreaming}
-                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {loading !== null ? 'Thinking…' : isStreaming ? '…' : 'Got it'}
-              </button>
-            </div>
+    {/* Prioritize modal */}
+    <AgentModal
+      open={pri.open}
+      title="Prioritize"
+      icon={SPARKLES_ICON}
+      spinnerClass="text-blue-400"
+      loadingLabel="Analyzing tasks…"
+      busyLabel="Thinking…"
+      text={priDisplay}
+      isStreaming={priStreaming}
+      busy={loading !== null}
+      onClose={() => setModalOpen('prioritize', false)}
+    >
+      {priRef && (
+        <div className="mx-5 mb-4 flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800/60 px-4 py-3">
+          <div className="min-w-0">
+            <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">Start here</p>
+            <p className="truncate text-sm font-medium text-zinc-100">{priRef.title}</p>
           </div>
+          <button
+            onClick={() => { router.push(`/tasks/${priRef.id}`); setModalOpen('prioritize', false) }}
+            className="ml-4 shrink-0 rounded-lg border border-zinc-600 bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600 hover:text-white"
+          >
+            Open →
+          </button>
         </div>
-      )
-    })()}
-
-    {/* FAB — re-open prioritize result when modal is dismissed */}
-    {prioritizeText && !prioritizeModalOpen && loading === null && (
-      <button
-        onClick={() => setPrioritizeModalOpen(true)}
-        aria-label="Today's focus"
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all duration-200 hover:bg-blue-500 hover:shadow-xl"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
-        </svg>
-        Today&apos;s focus
-      </button>
-    )}
-
-    {/* FAB — re-open backlog review result when modal is dismissed */}
-    {backlogText && !backlogModalOpen && loading === null && (
-      <button
-        onClick={() => setBacklogModalOpen(true)}
-        aria-label="Backlog review"
-        className={`fixed right-6 z-40 flex items-center gap-2 rounded-full bg-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-100 shadow-lg transition-all duration-200 hover:bg-zinc-600 hover:shadow-xl ${prioritizeText && !prioritizeModalOpen ? 'bottom-20' : 'bottom-6'}`}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-          <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
-        </svg>
-        Backlog review
-      </button>
-    )}
+      )}
+    </AgentModal>
 
     {/* Backlog review modal */}
-    {backlogModalOpen && (() => {
-      const SENTINEL = '[FLAGGED_JSON]'
-      const visibleSlice = backlogText.slice(0, backlogVisible)
-      const sepIdx = visibleSlice.indexOf(SENTINEL)
-      const displayText = sepIdx >= 0 ? visibleSlice.slice(0, sepIdx).trimEnd() : visibleSlice
-      const animDone = backlogVisible >= backlogText.length
-      let taskRefs: TaskRef[] = []
-      if (animDone && backlogText.indexOf(SENTINEL) >= 0) {
-        try { taskRefs = JSON.parse(backlogText.slice(backlogText.indexOf(SENTINEL) + SENTINEL.length).trim()) as TaskRef[] } catch {}
-      }
-      const isStreaming = !animDone
-      return (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => { if (loading === null) setBacklogModalOpen(false) }}
-        >
-          <div
-            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-5 py-3">
-              <div className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-                  <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
-                </svg>
-                <span className="text-sm font-semibold text-zinc-200">Backlog Review</span>
-              </div>
-              {loading === null && (
-                <button
-                  onClick={() => setBacklogModalOpen(false)}
-                  aria-label="Close"
-                  className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            {/* Scrollable body */}
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {/* Streaming body */}
-              <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
-                {displayText ? (
-                  renderMarkdown(displayText, isStreaming)
-                ) : (
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <svg className="h-4 w-4 animate-spin text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Reviewing backlog…
-                  </div>
-                )}
-              </div>
-
-              {/* Task chips — appear after animation completes */}
-              {taskRefs.length > 0 && (
-                <div className="mx-5 mb-4 flex flex-col gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Needs attention</p>
-                  <div className="flex flex-wrap gap-2">
-                    {taskRefs.map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => { router.push(`/tasks/${t.id}`); setBacklogModalOpen(false) }}
-                        className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-700 hover:text-white"
-                      >
-                        {t.title} →
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex shrink-0 justify-end border-t border-zinc-800 px-5 py-3">
+    <AgentModal
+      open={backlog.open}
+      title="Backlog Review"
+      icon={CLIPBOARD_ICON}
+      spinnerClass="text-amber-400"
+      loadingLabel="Reviewing backlog…"
+      busyLabel="Reviewing…"
+      text={backlogDisplay}
+      isStreaming={backlogStreaming}
+      busy={loading !== null}
+      onClose={() => setModalOpen('backlog-review', false)}
+    >
+      {flaggedRefs.length > 0 && (
+        <div className="mx-5 mb-4 flex flex-col gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Needs attention</p>
+          <div className="flex flex-wrap gap-2">
+            {flaggedRefs.map((t) => (
               <button
-                onClick={() => setBacklogModalOpen(false)}
-                disabled={isStreaming}
-                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+                key={t.id}
+                onClick={() => { router.push(`/tasks/${t.id}`); setModalOpen('backlog-review', false) }}
+                className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-700 hover:text-white"
               >
-                {loading !== null ? 'Reviewing…' : isStreaming ? '…' : 'Got it'}
+                {t.title} →
               </button>
-            </div>
+            ))}
           </div>
         </div>
-      )
-    })()}
-
-    {/* FAB — re-open status update result when modal is dismissed */}
-    {statusText && !statusModalOpen && loading === null && (
-      <button
-        onClick={() => setStatusModalOpen(true)}
-        aria-label="Status update"
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-100 shadow-lg transition-all duration-200 hover:bg-zinc-600 hover:shadow-xl"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-        </svg>
-        Status update
-      </button>
-    )}
+      )}
+    </AgentModal>
 
     {/* Status update modal */}
-    {statusModalOpen && (() => {
-      const displayText = statusText.slice(0, statusVisible)
-      const animDone = statusVisible >= statusText.length
-      const isStreaming = !animDone
-      return (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => { if (loading === null) setStatusModalOpen(false) }}
+    <AgentModal
+      open={status.open}
+      title="Status Update"
+      icon={CHAT_ICON}
+      spinnerClass="text-emerald-400"
+      loadingLabel="Drafting update…"
+      busyLabel="Drafting…"
+      text={statusDisplay}
+      isStreaming={statusStreaming}
+      busy={loading !== null}
+      onClose={() => setModalOpen('status-update', false)}
+      footerExtra={
+        <button
+          onClick={copyStatusUpdate}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
         >
-          <div
-            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-5 py-3">
-              <div className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-                </svg>
-                <span className="text-sm font-semibold text-zinc-200">Status Update</span>
-              </div>
-              {loading === null && (
-                <button
-                  onClick={() => setStatusModalOpen(false)}
-                  aria-label="Close"
-                  className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              )}
-            </div>
+          {copyState === 'copied' ? 'Copied ✓' : copyState === 'failed' ? 'Copy failed' : 'Copy for Slack'}
+        </button>
+      }
+    />
 
-            {/* Scrollable body */}
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
-                {displayText ? (
-                  renderMarkdown(displayText, isStreaming)
-                ) : (
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <svg className="h-4 w-4 animate-spin text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Drafting update…
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-800 px-5 py-3">
-              {!isStreaming && (
-                <button
-                  onClick={copyStatusUpdate}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
-                >
-                  {copied ? 'Copied ✓' : 'Copy for Slack'}
-                </button>
-              )}
-              <button
-                onClick={() => setStatusModalOpen(false)}
-                disabled={isStreaming}
-                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {loading !== null ? 'Drafting…' : isStreaming ? '…' : 'Got it'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )
-    })()}
+    {/* FABs — re-open dismissed results */}
+    {pri.text && !pri.open && loading === null && (
+      <AgentFab
+        onClick={() => setModalOpen('prioritize', true)}
+        label="Today's focus"
+        icon={<span className="[&>svg]:text-white">{SPARKLES_ICON}</span>}
+        className="bottom-6 bg-blue-600 text-white hover:bg-blue-500"
+      />
+    )}
+    {backlog.text && !backlog.open && loading === null && (
+      <AgentFab
+        onClick={() => setModalOpen('backlog-review', true)}
+        label="Backlog review"
+        icon={CLIPBOARD_ICON}
+        className={`bg-zinc-700 text-zinc-100 hover:bg-zinc-600 ${pri.text && !pri.open ? 'bottom-20' : 'bottom-6'}`}
+      />
+    )}
+    {status.text && !status.open && loading === null && (
+      <AgentFab
+        onClick={() => setModalOpen('status-update', true)}
+        label="Status update"
+        icon={CHAT_ICON}
+        className="bottom-6 bg-zinc-700 text-zinc-100 hover:bg-zinc-600"
+      />
+    )}
     </>
   )
 }

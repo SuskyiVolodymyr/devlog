@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { runAgentLoop } from '@/lib/agents/loop'
 import { CLAUDE_MODEL_FAST } from '@/lib/constants'
 
@@ -11,7 +12,12 @@ Rules:
 
 Respond with only a JSON object: {"title":"...","description":"..."} — no markdown fences, no commentary.`
 
-export type ImprovedTask = { title: string; description: string }
+const improvedTaskSchema = z.object({
+  title: z.string().trim().min(1),
+  description: z.string().trim(),
+})
+
+export type ImprovedTask = z.infer<typeof improvedTaskSchema>
 
 export async function runImproveTaskAgent(title: string, description: string): Promise<ImprovedTask> {
   const raw = await runAgentLoop(
@@ -24,9 +30,9 @@ export async function runImproveTaskAgent(title: string, description: string): P
 
   // Strip markdown fences in case the model wraps its output anyway
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '')
-  const parsed = JSON.parse(cleaned) as { title?: unknown; description?: unknown }
-  if (typeof parsed.title !== 'string' || !parsed.title.trim() || typeof parsed.description !== 'string') {
+  try {
+    return improvedTaskSchema.parse(JSON.parse(cleaned))
+  } catch {
     throw new Error('Agent returned malformed improvement')
   }
-  return { title: parsed.title.trim(), description: parsed.description.trim() }
 }
