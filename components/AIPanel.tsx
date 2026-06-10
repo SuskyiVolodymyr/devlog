@@ -85,6 +85,10 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   const [backlogText, setBacklogText] = useState<string>('')
   const [backlogVisible, setBacklogVisible] = useState(0)
   const [backlogModalOpen, setBacklogModalOpen] = useState(false)
+  const [statusText, setStatusText] = useState<string>('')
+  const [statusVisible, setStatusVisible] = useState(0)
+  const [statusModalOpen, setStatusModalOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const clarificationRef = useRef<HTMLTextAreaElement>(null)
 
@@ -93,17 +97,18 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
   }, [])
 
   useEffect(() => {
-    if (!expanded && !prioritizeModalOpen && !backlogModalOpen) return
+    if (!expanded && !prioritizeModalOpen && !backlogModalOpen && !statusModalOpen) return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setExpanded(false)
         setPrioritizeModalOpen(false)
         setBacklogModalOpen(false)
+        setStatusModalOpen(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [expanded, prioritizeModalOpen, backlogModalOpen])
+  }, [expanded, prioritizeModalOpen, backlogModalOpen, statusModalOpen])
 
   // Typewriter animation — advance visible character count each frame
   useEffect(() => {
@@ -121,6 +126,14 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
     )
     return () => cancelAnimationFrame(id)
   }, [backlogText, backlogVisible, loading])
+
+  useEffect(() => {
+    if (statusVisible >= statusText.length) return
+    const id = requestAnimationFrame(() =>
+      setStatusVisible(v => Math.min(v + (loading === null ? 20 : 4), statusText.length))
+    )
+    return () => cancelAnimationFrame(id)
+  }, [statusText, statusVisible, loading])
 
   // Tick elapsed seconds while a request is in flight
   useEffect(() => {
@@ -180,6 +193,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
           rafId = null
           if (action === 'prioritize') setPrioritizeText(accumulated)
           else if (action === 'backlog-review') setBacklogText(accumulated)
+          else if (action === 'status-update') setStatusText(accumulated)
           else setResponse(accumulated)
         }
 
@@ -245,7 +259,7 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
       })()
 
       // Modal actions already streamed — nothing left to do
-      if (action === 'prioritize' || action === 'backlog-review') return
+      if (action === 'prioritize' || action === 'backlog-review' || action === 'status-update') return
 
       if (!responseText.trim()) {
         setResponse('No response from agent. Please try again.')
@@ -278,7 +292,21 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
       setBacklogVisible(0)
       setBacklogModalOpen(true)
     }
+    if (action === 'status-update') {
+      setStatusText('')
+      setStatusVisible(0)
+      setCopied(false)
+      setStatusModalOpen(true)
+    }
     callAgent(action)
+  }
+
+  function copyStatusUpdate() {
+    // Slack renders *single asterisks* as bold
+    navigator.clipboard.writeText(statusText.replace(/\*\*/g, '*')).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {})
   }
 
   function sendClarification() {
@@ -617,6 +645,95 @@ export default function AIPanel({ taskId, onRefresh }: AIPanelProps) {
                 className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading !== null ? 'Reviewing…' : isStreaming ? '…' : 'Got it'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    })()}
+
+    {/* FAB — re-open status update result when modal is dismissed */}
+    {statusText && !statusModalOpen && loading === null && (
+      <button
+        onClick={() => setStatusModalOpen(true)}
+        aria-label="Status update"
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-100 shadow-lg transition-all duration-200 hover:bg-zinc-600 hover:shadow-xl"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+        </svg>
+        Status update
+      </button>
+    )}
+
+    {/* Status update modal */}
+    {statusModalOpen && (() => {
+      const displayText = statusText.slice(0, statusVisible)
+      const animDone = statusVisible >= statusText.length
+      const isStreaming = !animDone
+      return (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => { if (loading === null) setStatusModalOpen(false) }}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-5 py-3">
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                </svg>
+                <span className="text-sm font-semibold text-zinc-200">Status Update</span>
+              </div>
+              {loading === null && (
+                <button
+                  onClick={() => setStatusModalOpen(false)}
+                  aria-label="Close"
+                  className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Scrollable body */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="flex flex-col gap-3 px-5 py-4 text-sm leading-relaxed">
+                {displayText ? (
+                  renderMarkdown(displayText, isStreaming)
+                ) : (
+                  <div className="flex items-center gap-2 text-zinc-500">
+                    <svg className="h-4 w-4 animate-spin text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Drafting update…
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-800 px-5 py-3">
+              {!isStreaming && (
+                <button
+                  onClick={copyStatusUpdate}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+                >
+                  {copied ? 'Copied ✓' : 'Copy for Slack'}
+                </button>
+              )}
+              <button
+                onClick={() => setStatusModalOpen(false)}
+                disabled={isStreaming}
+                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {loading !== null ? 'Drafting…' : isStreaming ? '…' : 'Got it'}
               </button>
             </div>
           </div>
