@@ -22,20 +22,6 @@ ANTHROPIC_API_KEY=   # required — get from https://console.anthropic.com
 
 The only required variable. All AI features are live once the key is set. Optional overrides (see `.env.example`): `CLAUDE_MODEL_CAPABLE` (reasoning agents, default `claude-sonnet-4-6`), `CLAUDE_MODEL_FAST` (simple generation, default `claude-haiku-4-5`), `DB_PATH`.
 
-## Testing the app
-
-Click **Demo data** in the top-right header to load 9 pre-built tasks — no manual setup needed. The tasks are intentionally varied so every AI agent has something interesting to work with:
-
-| Agent | How to test |
-|-------|-------------|
-| **Prioritize** | Click "Prioritize" in the AI panel on the main page. Tasks span all statuses and priorities. |
-| **Backlog Review** | Click "Backlog Review" on the main page. Expect 3–4 flagged tasks: "Fix auth" (vague), "Refactor database layer" (stuck in-progress), "Implement real-time notifications" (no decomposition). |
-| **Decompose** | Open "Set up CI/CD pipeline" or "Investigate slow task list queries". Both have clear descriptions → agent creates subtasks directly. Open "Fix auth" (description: "broken") → agent asks a clarifying question first. |
-| **Status Update** | Open "Write API documentation". It has 3 subtasks and execution notes → agent drafts a structured Slack-style update with a "Copy for Slack" button. |
-| **Improve with AI** | Click "+ New Task", type a rough draft (e.g. "fix bug when user click save two times and it create duplicate task"), hit "Improve with AI" → fields are rewritten in clean English, with Undo. |
-
-Clicking "Demo data" again adds another batch on top. To start clean, delete all tasks and click it once more.
-
 ## What it does
 
 ### Task tracker
@@ -63,6 +49,17 @@ Each agent calls tools (DB reads, task creation), receives results, reasons furt
 **Why Backlog Review matters for engineering teams**: Engineers routinely lose sprint planning time to poorly defined tasks — tickets with one-line descriptions, high-priority items nobody decomposed, in-progress tasks that have silently stalled. Catching these before the planning meeting is the job of a senior engineer doing "backlog grooming," a 30–60 minute manual process that happens every 1–2 weeks. The Backlog Review agent does this in seconds: it reads every open task, selectively fetches subtask state for complex items, applies consistent quality criteria, and surfaces only the tasks that genuinely need attention. The result is actionable rather than advisory — each flagged task comes with a specific fix, not just a flag.
 
 **Why Improve with AI matters**: many engineering teams work in English while few members are native speakers. Tickets written in rushed, broken English become exactly the vague tasks Backlog Review later flags. Fixing the problem at the point of entry — one click while creating the task — is cheaper than grooming it later. The agent is deliberately constrained: it cleans wording and structure but is forbidden from inventing requirements the author didn't write.
+
+### Trying the AI features
+
+Click **Demo data** in the top-right header to load 9 pre-built tasks — intentionally varied so every agent has something to work with:
+
+- **Prioritize / Backlog Review** — run from the main page. Backlog Review should flag 3–4 tasks: "Fix auth" (vague), "Refactor database layer" (stuck in-progress), "Implement real-time notifications" (no decomposition)
+- **Decompose** — "Set up CI/CD pipeline" has a clear description → subtasks created directly; "Fix auth" (description: "broken") → clarifying question first
+- **Status Update** — "Write API documentation" has 3 subtasks and execution notes
+- **Improve with AI** — "+ New Task", type a rough draft like *"fix bug when user click save two times and it create duplicate task"*
+
+Clicking "Demo data" again adds another batch on top. To start clean, delete all tasks and click it once more.
 
 ## Architecture
 
