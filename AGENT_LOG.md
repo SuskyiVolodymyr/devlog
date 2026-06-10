@@ -9,7 +9,8 @@ Honest account of how Claude Code was used to build DevLog. What the agent did, 
 All development done with Claude Code as the primary coding assistant. The session used:
 - **Parallel sub-agents** (`Agent` tool with `isolation: "worktree"`) for simultaneous feature branches
 - **GitHub MCP** for all git operations — repo creation, branches, commits, PRs, merges
-- **Custom `/review` slash command** (`.claude/commands/review.md`) for project-aware code review
+- **Claude-in-Chrome MCP (browser)** for end-to-end verification — Claude drove the real app in Chrome (click, wait for stream, screenshot) before every UI commit; several prompt-format bugs were caught this way that code review would have missed
+- **Custom `/review` and `/senior-review` slash commands** (`.claude/commands/`) for project-aware code review
 - **Context files** loaded selectively: `CLAUDE.md`, `AGENTS.md`, `.claude/architecture.md`, `.claude/conventions.md`, `.claude/github.md`, `docs/features/ai-agents.md`
 - **Memory** (`~/.claude/projects/`) for persistent preferences across sessions
 
