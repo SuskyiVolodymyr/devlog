@@ -1,6 +1,7 @@
 import { runImproveTaskAgent } from '@/lib/agents/improve-task'
 import { headers } from 'next/headers'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { improveTaskInputSchema } from '@/lib/schemas'
 
 export async function POST(request: Request) {
   try {
@@ -11,11 +12,12 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}))
-    const title = typeof body.title === 'string' ? body.title.trim() : ''
-    const description = typeof body.description === 'string' ? body.description : ''
-    if (!title) return Response.json({ error: 'Title is required' }, { status: 400 })
+    const parsed = improveTaskInputSchema.safeParse(body)
+    if (!parsed.success) {
+      return Response.json({ error: parsed.error.issues[0].message }, { status: 400 })
+    }
 
-    const improved = await runImproveTaskAgent(title, description)
+    const improved = await runImproveTaskAgent(parsed.data.title, parsed.data.description)
     return Response.json(improved)
   } catch (error) {
     console.error('[/api/ai/improve-task]', error)

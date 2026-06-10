@@ -20,6 +20,14 @@ export const updateTaskSchema = z.object({
   notes: z.string().optional(),
 })
 
+// AI route inputs — length caps bound token costs on expensive endpoints
+export const improveTaskInputSchema = z.object({
+  title: z.string().trim().min(1, 'Title is required').max(200, 'Title must be 200 characters or less'),
+  description: z.string().max(5000, 'Description must be 5000 characters or less').default(''),
+})
+export const clarificationSchema = z.string().max(2000, 'Clarification must be 2000 characters or less')
+export const notesSchema = z.string().max(5000, 'Notes must be 5000 characters or less')
+
 // Agent tool input schemas — replaces requireString() + manual checks
 export const getTaskToolSchema = z.object({ id: z.string() })
 export const getSubtasksToolSchema = z.object({ parentId: z.string() })

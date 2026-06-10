@@ -21,6 +21,9 @@ db.exec(`
   )
 `)
 
+// Subtask lookups and the embedded count subqueries depend on this index
+db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)')
+
 type TaskRow = {
   id: string
   title: string
