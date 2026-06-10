@@ -40,7 +40,7 @@ Five features. The four agents on the board/task pages use Claude's tool-use API
 | **Backlog Review** | Main page AI panel | Scans all open tasks for quality issues: vague descriptions, high-priority items with no decomposition, stuck in-progress tasks, forgotten to-dos. Streams a flagged-task report into a modal with clickable chips for each task that needs attention. |
 | **Decompose** | Task detail AI panel | Reads the task; if the description is vague asks a clarifying question first (with a reply box in the UI). Otherwise creates 3–6 subtasks in the DB and refreshes the list automatically. |
 | **Status Update** | Task detail AI panel | Reads the task and its subtasks, drafts a structured Slack-style update (context line + Done / In progress / Next / Blocked bullets) with a "Copy for Slack" button that converts to Slack markdown |
-| **Improve with AI** | New/Edit Task form | Rewrites a rough title and description into clear, professional English — built for non-native speakers. Never invents details, one-click Undo restores the original. |
+| **Improve with AI** | New/Edit Task form | Rewrites a rough title and description into a clear, constructive task — specific imperative title, description that states the actual problem. Never invents details, one-click Undo restores the original. |
 
 Each agent calls tools (DB reads, task creation), receives results, reasons further, and decides whether to call more tools or return — the classic agentic loop.
 
@@ -48,7 +48,7 @@ Each agent calls tools (DB reads, task creation), receives results, reasons furt
 
 **Why Backlog Review matters for engineering teams**: Engineers routinely lose sprint planning time to poorly defined tasks — tickets with one-line descriptions, high-priority items nobody decomposed, in-progress tasks that have silently stalled. Catching these before the planning meeting is the job of a senior engineer doing "backlog grooming," a 30–60 minute manual process that happens every 1–2 weeks. The Backlog Review agent does this in seconds: it reads every open task, selectively fetches subtask state for complex items, applies consistent quality criteria, and surfaces only the tasks that genuinely need attention. The result is actionable rather than advisory — each flagged task comes with a specific fix, not just a flag.
 
-**Why Improve with AI matters**: many engineering teams work in English while few members are native speakers. Tickets written in rushed, broken English become exactly the vague tasks Backlog Review later flags. Fixing the problem at the point of entry — one click while creating the task — is cheaper than grooming it later. The agent is deliberately constrained: it cleans wording and structure but is forbidden from inventing requirements the author didn't write.
+**Why Improve with AI matters**: a task is written once and read many times — by teammates picking it up, by reviewers, by the AI agents themselves. Tasks written in a hurry ("fix auth, broken") force every reader to reconstruct what the author actually meant, and become exactly the vague tickets Backlog Review later flags. This feature makes clarity cheap at the point of entry: one click turns a rough draft into a specific, constructive task — clear imperative title, description that states the actual problem — so everyone reading it understands the same thing. The agent is deliberately constrained: it sharpens wording and structure but is forbidden from inventing requirements the author didn't write.
 
 ### Trying the AI features
 
