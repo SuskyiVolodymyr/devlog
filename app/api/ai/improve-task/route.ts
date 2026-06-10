@@ -1,0 +1,24 @@
+import { runImproveTaskAgent } from '@/lib/agents/improve-task'
+import { headers } from 'next/headers'
+import { checkRateLimit } from '@/lib/rateLimit'
+
+export async function POST(request: Request) {
+  try {
+    const headersList = await headers()
+    const ip = headersList.get('x-forwarded-for') ?? 'unknown'
+    if (!checkRateLimit(ip)) {
+      return Response.json({ error: 'Too many requests. Please wait a minute.' }, { status: 429 })
+    }
+
+    const body = await request.json().catch(() => ({}))
+    const title = typeof body.title === 'string' ? body.title.trim() : ''
+    const description = typeof body.description === 'string' ? body.description : ''
+    if (!title) return Response.json({ error: 'Title is required' }, { status: 400 })
+
+    const improved = await runImproveTaskAgent(title, description)
+    return Response.json(improved)
+  } catch (error) {
+    console.error('[/api/ai/improve-task]', error)
+    return Response.json({ error: 'AI agent failed. Please try again.' }, { status: 500 })
+  }
+}
