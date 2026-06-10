@@ -21,6 +21,9 @@ db.exec(`
   )
 `)
 
+// Subtask lookups and the embedded count subqueries depend on this index
+db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)')
+
 type TaskRow = {
   id: string
   title: string
@@ -30,6 +33,8 @@ type TaskRow = {
   parent_id: string | null
   notes: string
   created_at: string
+  subtask_total?: number
+  subtask_done?: number
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -42,12 +47,15 @@ function rowToTask(row: TaskRow): Task {
     parentId: row.parent_id,
     notes: row.notes,
     createdAt: row.created_at,
+    ...(row.subtask_total !== undefined && {
+      subtaskStats: { total: row.subtask_total, done: row.subtask_done ?? 0 },
+    }),
   }
 }
 
 const PRIORITY_ORDER = `CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 END`
 
-export function getTasks(filters?: TaskFilters): Task[] {
+function buildTaskFilters(filters?: TaskFilters): { where: string; order: string; params: (string | null)[] } {
   const conditions: string[] = []
   const params: (string | null)[] = []
 
@@ -71,37 +79,26 @@ export function getTasks(filters?: TaskFilters): Task[] {
       ? `ORDER BY ${PRIORITY_ORDER}, created_at DESC`
       : 'ORDER BY created_at DESC'
 
+  return { where, order, params }
+}
+
+export function getTasks(filters?: TaskFilters): Task[] {
+  const { where, order, params } = buildTaskFilters(filters)
   const rows = db.prepare(`SELECT * FROM tasks ${where} ${order}`).all(...params) as TaskRow[]
   return rows.map(rowToTask)
 }
 
 export function getTasksPage(filters: TaskFilters, page: number, limit: number): TaskPage {
-  const conditions: string[] = []
-  const params: (string | null)[] = []
-
-  if (filters?.status) {
-    conditions.push('status = ?')
-    params.push(filters.status)
-  }
-
-  if (filters?.parentId !== undefined) {
-    if (filters.parentId === null) {
-      conditions.push('parent_id IS NULL')
-    } else {
-      conditions.push('parent_id = ?')
-      params.push(filters.parentId)
-    }
-  }
-
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-  const order =
-    filters?.sort === 'priority'
-      ? `ORDER BY ${PRIORITY_ORDER}, created_at DESC`
-      : 'ORDER BY created_at DESC'
+  const { where, order, params } = buildTaskFilters(filters)
 
   const { total } = db.prepare(`SELECT COUNT(*) as total FROM tasks ${where}`).get(...params) as { total: number }
   const rows = db
-    .prepare(`SELECT * FROM tasks ${where} ${order} LIMIT ? OFFSET ?`)
+    .prepare(`
+      SELECT t.*,
+        (SELECT COUNT(*) FROM tasks s WHERE s.parent_id = t.id) AS subtask_total,
+        (SELECT COUNT(*) FROM tasks s WHERE s.parent_id = t.id AND s.status = 'done') AS subtask_done
+      FROM tasks t ${where} ${order} LIMIT ? OFFSET ?
+    `)
     .all(...params, limit, page * limit) as TaskRow[]
 
   return { tasks: rows.map(rowToTask), total, page, limit }

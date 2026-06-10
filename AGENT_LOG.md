@@ -9,7 +9,8 @@ Honest account of how Claude Code was used to build DevLog. What the agent did, 
 All development done with Claude Code as the primary coding assistant. The session used:
 - **Parallel sub-agents** (`Agent` tool with `isolation: "worktree"`) for simultaneous feature branches
 - **GitHub MCP** for all git operations — repo creation, branches, commits, PRs, merges
-- **Custom `/review` slash command** (`.claude/commands/review.md`) for project-aware code review
+- **Claude-in-Chrome MCP (browser)** for end-to-end verification — Claude drove the real app in Chrome (click, wait for stream, screenshot) before every UI commit; several prompt-format bugs were caught this way that code review would have missed
+- **Custom `/review` and `/senior-review` slash commands** (`.claude/commands/`) for project-aware code review
 - **Context files** loaded selectively: `CLAUDE.md`, `AGENTS.md`, `.claude/architecture.md`, `.claude/conventions.md`, `.claude/github.md`, `docs/features/ai-agents.md`
 - **Memory** (`~/.claude/projects/`) for persistent preferences across sessions
 
@@ -19,11 +20,13 @@ All development done with Claude Code as the primary coding assistant. The sessi
 
 **What I asked Claude to do**: Design the full project architecture, decide on storage strategy, plan the AI agent approach, then set up all Claude Code context files.
 
-**What Claude did**: Proposed the separation of CLAUDE.md into focused per-domain files (architecture, conventions, github rules) so context loads selectively rather than as one monolithic file. That was Claude's suggestion — I had expected one big file. It also flagged that Next.js 16 auto-generates both `CLAUDE.md` and `AGENTS.md` via `create-next-app`, which is a native signal that the ecosystem is catching up to agent-assisted development.
+**The structure was my call**: I wanted the Claude Code infrastructure split into focused per-domain files (architecture, conventions, github rules) instead of one monolithic CLAUDE.md — for better token usage, more relevant context per task, and fewer misunderstandings from the agent reading rules that don't apply to the job at hand. Claude wrote the content of each file from my outline.
+
+**What Claude added**: It flagged that Next.js 16 auto-generates both `CLAUDE.md` and `AGENTS.md` via `create-next-app`, which is a native signal that the ecosystem is catching up to agent-assisted development.
 
 **What I changed**: Minor wording in `.claude/github.md` to match our exact branching flow.
 
-**Honest assessment**: The infrastructure setup was nearly perfect out of the box. Claude understood the purpose of keeping context lean without being asked explicitly.
+**Honest assessment**: With the structure decided upfront, the content Claude generated for each file was nearly perfect out of the box and held up for the whole build — conventions written in Phase 0 were still being followed by sub-agents many sessions later.
 
 ---
 
@@ -112,19 +115,102 @@ Implemented the shared `runAgentLoop`, tool definitions, and three agents. Used 
 
 ---
 
+## Phase 6: Senior review — five-agent panel
+
+**What I asked Claude to do**: Run a deep multi-perspective review before calling the build done. I added a custom `/senior-review` command (`.claude/commands/senior-review.md`) that spawns five parallel reviewer agents — architecture, code quality/TypeScript, scalability, security/reliability, performance/UX — each with its own checklist, then synthesizes findings into one graded report.
+
+**What it found**: 23 confirmed findings, fixed across three commits. Highlights: missing enum validation on PUT (any string accepted as status), AI error responses leaking internal messages, no rate limiting on expensive AI endpoints, fetch calls without AbortController (state updates after unmount), modal without focus trap, status/priority styling duplicated across components.
+
+**Honest assessment**: The panel also produced false positives — findings that sounded plausible but were refuted by actually reading the code. Synthesizing meant dropping those, not fixing everything blindly. The value of the multi-agent setup was coverage breadth: security and accessibility issues came from different reviewers, and neither would have caught the other's list.
+
+---
+
+## Phase 7: Performance pass — streaming, pagination, token costs
+
+**What I asked Claude to do**: Make agent responses stream instead of blocking for 10–30 seconds, paginate the task list, and cut AI token costs.
+
+**What Claude did**: SSE streaming end-to-end (`lib/sse.ts` helper, `onToken` callback threaded through the agent loop, client-side SSE parser in `AIPanel`). Pagination at 50/page with load-more. Token optimization: inject task data directly into prompts where the input is already known (status update no longer burns a tool round-trip to fetch what the route already loaded), batch subtask creation, right-size models — Haiku for simple generation, Sonnet for reasoning.
+
+---
+
+## Phase 8: Reviewer experience — demo data and testing guide
+
+**What I asked Claude to do**: Make the app testable in one click — reviewers shouldn't have to invent tasks before trying the AI features.
+
+**What Claude did**: A "Demo data" button seeding tasks deliberately varied so every agent has material: a vague task ("Fix auth" / "broken") for the clarification flow, a stalled in-progress task for Backlog Review, a task with subtasks and notes for Status Update.
+
+---
+
+## Phase 9: TanStack Query + Zod migration
+
+**What I asked Claude to do**: Replace the manual `useState`/`useEffect` fetch patterns with TanStack Query, and the hand-rolled API validation with Zod.
+
+**What Claude did**: Two parallel worktree agents — one migrated all data hooks to TanStack Query (`useInfiniteQuery` for the list, mutations with cache invalidation, optimistic status updates with rollback), the other introduced `lib/schemas.ts` and replaced manual type checks at every API boundary. Merged via a feature branch.
+
+**Honest assessment**: This is the migration I'd be most careful about reviewing by hand — cache invalidation bugs are subtle. The optimistic-update rollback logic was verified by clicking through status changes with the network tab open, not just by reading the diff.
+
+---
+
+## Phase 10: AI output UX — the feedback-driven phase
+
+This phase was the clearest example of "AI as amplifier, not replacement": every iteration was driven by me using the product and reacting, with Claude implementing and verifying.
+
+**The problem**: agents returned walls of plain text into a small panel. As a developer I didn't want to read paragraphs to learn "start with task X".
+
+**The iterations** (each one my feedback, Claude's implementation):
+1. *"Too much text, add formatting, add a navigation card when the response finishes"* → shortened prompts (bullets, word caps), a lightweight markdown renderer (bold + bullets, ~50 lines, no library), and structured output: agents end with a sentinel-separated JSON block carrying exact task IDs, so navigation chips/cards never depend on parsing prose.
+2. *"Do the same for backlog review"* → same modal pattern, where two real bugs surfaced: the model rendered `---` as a markdown horizontal rule mid-prose, colliding with the `---` sentinel and truncating the whole report — fixed by switching to a unique `[FLAGGED_JSON]` marker; and the model leaked raw task IDs as markdown links into the prose — fixed in both the renderer (strips links) and the prompt ("IDs belong in the JSON block only").
+3. *"The modal doesn't fit the screen"* — I caught this after the commit had landed; fixed in a follow-up (max-height + scrollable body + pinned header/footer).
+4. *"Can we make text generation smoother?"* → first attempt batched state updates to one per animation frame. *"Still not smooth"* → the real fix decoupled rendering from network bursts entirely: a typewriter that advances a visible-character counter per frame (faster drain once the stream ends). The letter-by-letter idea was mine; Claude validated it wouldn't cause performance issues (it's a counter increment and a string slice per frame) and implemented it.
+
+**Verification workflow**: every iteration was verified live — Claude drove Chrome through the Claude-in-Chrome MCP: click the button, wait for the stream, screenshot, confirm rendering — before each commit. Several bugs (the sentinel collision, the ID leak) were caught this way, not by reading code.
+
+---
+
+## Phase 11: N+1 elimination — diagnosed from server logs
+
+**What happened**: I noticed the dev server logged ~35 requests on first load and pasted the logs asking why. Claude traced it to `useSubtaskStats`: two count requests per task (1 + 2N pattern). The fix moved the counts into the task-list SQL via correlated subqueries — subtask progress now arrives embedded in the single list response, and the hook became a pure data extractor.
+
+**Honest assessment**: this is a bug an automated review had earlier rationalized as "acceptable at this scale". It was acceptable until a human looked at the logs and felt it was wrong. The earlier README even documented it as a known trade-off — now it's just fixed.
+
+---
+
+## Phase 12: Status Update — structured output + Copy for Slack
+
+**What I asked**: the status update read fine but was a wall of prose like the other agents used to be — same modal treatment.
+
+**What Claude did**: restructured the prompt (context line + Done / In progress / Next / Blocked bullets with word caps), reused the streaming modal, and added a "Copy for Slack" button that converts `**bold**` to Slack's `*bold*`.
+
+**What broke first**: the live browser test showed the agent emitting six separate "Next" bullets — one per subtask — instead of one summary. Fixed with an explicit prompt rule ("each label appears at most once — summarize across subtasks"). A prompt bug that only an end-to-end test catches.
+
+---
+
+## Phase 13: Improve with AI — second own-idea feature
+
+**The idea was mine, shaped by my own pain**: I'm not a native English speaker, and my rough drafts become exactly the vague tickets Backlog Review later flags. So: a button in the task form that rewrites title + description into clean English at the point of entry.
+
+**What Claude did**: a Haiku-based agent returning strict JSON, deliberately constrained ("never invent requirements the author didn't write"), a plain JSON route (no streaming — it fills form fields), and the form button with a spinner and one-click Undo that restores the original text.
+
+**Verification**: tested live with intentionally broken English — *"fix bug when user click save two times very fast and it create duplicate task"* → *"Prevent duplicate tasks from rapid save button clicks"*, with the description keeping my suggested fix and adding nothing invented.
+
+---
+
 ## What Claude did well
 
 - **Context retention**: Conventions from `.claude/` were followed consistently across multiple agent sessions and PR reviews without repeated reminders
-- **GitHub workflow**: Every commit, branch, PR, and merge went through MCP — zero manual git
-- **Architecture decisions**: The shared `runAgentLoop` pattern, the `parentId`-as-subtask design, and the selective context loading were all Claude suggestions that held up through the build
+- **Architecture decisions**: The shared `runAgentLoop` pattern and the `parentId`-as-subtask design were Claude suggestions that held up through the build
 - **Post-merge integration**: Finding and explaining the null coercion bug, the type boundary gaps, and the stub conflict — all diagnosed and fixed without help
+- **Self-verification**: Driving the actual browser (Claude-in-Chrome MCP) to test every UI change end-to-end before committing — this caught prompt-format bugs (sentinel collision, ID leaks, repeated bullets) that no amount of code reading would have found
+- **Diagnosis from evidence**: Tracing the N+1 from pasted server logs to the exact hook, and proposing the correlated-subquery fix in one pass
 
 ## What needed human judgment
 
-- **Scope decisions**: Choosing which 3 of 4 AI features to implement (I prioritized A, B, C over D)
-- **Parallel agent strategy**: The decision to spawn 3 parallel agents came from me; Claude implemented it
+- **Agent infrastructure design**: Splitting the Claude Code context into focused per-domain files (`.claude/architecture.md`, `conventions.md`, `github.md`) was my decision — made for token efficiency, more relevant context per task, and fewer misunderstandings from rules that don't apply to the job at hand
+- **Product taste**: Every UX iteration in Phase 10 started with me using the app and reacting — "too much text", "still not smooth", "doesn't fit the screen". Claude implemented and verified; the judgment of what *feels* right stayed human
+- **Noticing what's wrong**: The N+1 was found because I read the dev server logs and felt 35 requests was too many — the earlier automated review had rationalized it as acceptable
+- **Feature ideas**: The fifth AI feature (Improve with AI) came from my own pain as a non-native English speaker; the letter-by-letter typewriter rendering was also my suggestion
 - **Clarification UX**: Recognizing that the decompose flow had a product gap (agent asks question, UI has no reply mechanism) was a manual insight the automated review missed
-- **Commit message style**: Kept conventional commits clean; Claude occasionally added `Co-Authored-By` lines (removed after feedback)
+- **Scope sequencing**: Specified features A–C first, the own-idea agents (D: Backlog Review, plus Improve with AI) after the base was hardened
 
 ---
 
@@ -141,3 +227,5 @@ Implemented the shared `runAgentLoop`, tool definitions, and three agents. Used 
 | #7 | `fix/toplevel-tasks-query` | Claude Code (post-merge review) |
 | #8 | `fix/polish` | Claude Code (after `/review` pass) |
 | #9 | `docs/readme-agentlog` | Claude Code (main session) |
+
+Later phases continued on feature branches merged locally into `develop` (`fix/senior-review`, `feat/sse-streaming`, `feat/backlog-review-agent`, `feat/seed-demo-data`, `feat/tanstack-query-zod`, and others — see `git log`). An honest note on workflow: during the final UX iteration phase (modals, streaming, typewriter), changes landed as sequential conventional commits directly on `develop` rather than one-branch-per-change — the iterations were small, feedback-driven, and each was browser-verified before commit, so the PR ceremony added no value at that cadence. `develop` was merged to `main` with `--no-ff` at stable points.

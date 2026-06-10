@@ -9,12 +9,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This project uses Next.js 16 App Router. Key conventions for AI agents working on this codebase:
 
 ## Project purpose
-DevLog is a task tracker with embedded AI agents. The in-product AI features (prioritization, decomposition, status updates) use the Anthropic Claude API with tool use. Claude Code (you) is the coding assistant that builds the app.
+DevLog is a task tracker with embedded AI agents. The in-product AI features (prioritization, backlog review, decomposition, status updates, task improvement) use the Anthropic Claude API with tool use. Claude Code (you) is the coding assistant that builds the app.
 
 ## Tech stack
 - **Framework**: Next.js 16.2 App Router, TypeScript, Tailwind CSS, Turbopack
 - **Storage**: SQLite via `better-sqlite3` — file-based, zero infrastructure
-- **AI runtime**: `@anthropic-ai/sdk` — Claude API with tool use for agentic loops
+- **AI runtime**: `@anthropic-ai/sdk` — Claude API with tool use for agentic loops, streamed over SSE
+- **Server state**: TanStack Query v5 (`lib/hooks/useTasks.ts`) — do not add manual fetch/useEffect data flows
+- **Validation**: Zod schemas in `lib/schemas.ts` at API boundaries
 - **Style**: Tailwind utility classes only, no CSS modules
 
 ## Critical rules

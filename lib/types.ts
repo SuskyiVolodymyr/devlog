@@ -10,6 +10,7 @@ export interface Task {
   parentId: string | null
   notes: string
   createdAt: string // ISO 8601
+  subtaskStats?: { total: number; done: number }
 }
 
 export interface CreateTaskInput {

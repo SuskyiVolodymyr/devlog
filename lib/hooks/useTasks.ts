@@ -1,15 +1,15 @@
 'use client'
 
+import { useMemo } from 'react'
 import {
   useQuery,
   useInfiniteQuery,
   useMutation,
   useQueryClient,
-  useQueries,
   type InfiniteData,
 } from '@tanstack/react-query'
 import type { Task, TaskPage, TaskFilters, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
-import { apiGetTasks, apiGetTask, apiCreateTask, apiUpdateTask, apiDeleteTask } from '@/lib/api-client'
+import { apiGetTasks, apiCreateTask, apiUpdateTask, apiDeleteTask } from '@/lib/api-client'
 
 const PAGE_SIZE = 50
 
@@ -40,7 +40,11 @@ export function useTaskList(filters: TaskFilters) {
     },
   })
 
-  const tasks = query.data?.pages.flatMap((p) => p.tasks) ?? []
+  // Stable array reference per data version — downstream memoization depends on it
+  const tasks = useMemo(
+    () => query.data?.pages.flatMap((p) => p.tasks) ?? [],
+    [query.data]
+  )
   const total = query.data?.pages[0]?.total ?? 0
 
   return {
@@ -54,22 +58,14 @@ export function useTaskList(filters: TaskFilters) {
   }
 }
 
+// Subtask stats are embedded in the task list response — no extra requests needed.
+// Shared constant keeps the fallback reference-stable so memoized cards don't re-render.
+const EMPTY_STATS = { total: 0, done: 0 }
+
 export function useSubtaskStats(tasks: Task[]) {
-  const queries = useQueries({
-    queries: tasks.map((task) => ({
-      queryKey: ['subtask-stats', task.id] as const,
-      queryFn: async () => {
-        const [totalRes, doneRes] = await Promise.all([
-          apiGetTasks(new URLSearchParams({ parentId: task.id, limit: '1' })),
-          apiGetTasks(new URLSearchParams({ parentId: task.id, status: 'done', limit: '1' })),
-        ])
-        return { total: totalRes.total, done: doneRes.total }
-      },
-      staleTime: 30_000,
-    })),
-  })
-  return Object.fromEntries(
-    tasks.map((task, i) => [task.id, queries[i]?.data ?? { total: 0, done: 0 }])
+  return useMemo(
+    () => Object.fromEntries(tasks.map((task) => [task.id, task.subtaskStats ?? EMPTY_STATS])),
+    [tasks]
   )
 }
 
@@ -118,7 +114,7 @@ export function useCreateTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       qc.invalidateQueries({ queryKey: ['subtasks'] })
-      qc.invalidateQueries({ queryKey: ['subtask-stats'] })
+      // subtask stats are embedded in the tasks response — invalidating ['tasks'] is enough
     },
   })
 }
@@ -142,7 +138,7 @@ export function useDeleteTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       qc.invalidateQueries({ queryKey: ['subtasks'] })
-      qc.invalidateQueries({ queryKey: ['subtask-stats'] })
+      // subtask stats are embedded in the tasks response — invalidating ['tasks'] is enough
     },
   })
 }

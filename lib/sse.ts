@@ -38,8 +38,9 @@ export function createAgentSSEResponse(
         await run(onToken)
         controller.enqueue(sseDone())
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error'
-        controller.enqueue(sseError(message))
+        // Never stream internal error details to the client
+        console.error('[agent-sse]', err)
+        controller.enqueue(sseError('AI agent failed. Please try again.'))
       } finally {
         controller.close()
       }

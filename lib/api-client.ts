@@ -47,3 +47,15 @@ export async function apiDeleteTask(id: string): Promise<void> {
   const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await parseApiError(res, 'Failed to delete task'))
 }
+
+export type ImprovedTask = { title: string; description: string }
+
+export async function apiImproveTask(input: ImprovedTask): Promise<ImprovedTask> {
+  const res = await fetch('/api/ai/improve-task', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!res.ok) throw new Error(await parseApiError(res, 'Failed to improve task'))
+  return res.json() as Promise<ImprovedTask>
+}
