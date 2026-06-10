@@ -195,6 +195,16 @@ This phase was the clearest example of "AI as amplifier, not replacement": every
 
 ---
 
+## Phase 14: CI and the first tests
+
+**What I asked**: a GitHub Actions pipeline so every PR is checked automatically — and tests to go with it.
+
+**What Claude did**: a single-job workflow (type-check → lint → test → build on every PR and push to main/develop) and a Vitest suite aimed where the README said regressions were most likely: `lib/db.ts` (CRUD round-trips, cascade delete, filters, pagination, embedded subtask stats, and the update-allowlist defense) and the agent output parsers — including a regression test for the real sentinel-collision bug from Phase 10. 34 tests, under a second.
+
+**A deliberate choice**: no component or E2E tests. At this scope they would mostly re-test React and mock away the agent behavior that actually breaks; live browser verification covers that layer better. One CI detail worth noting: `next build` imports route modules during page-data collection, and the Anthropic client requires a key at construction — CI uses a dummy env var, and no API calls happen.
+
+---
+
 ## What Claude did well
 
 - **Context retention**: Conventions from `.claude/` were followed consistently across multiple agent sessions and PR reviews without repeated reminders

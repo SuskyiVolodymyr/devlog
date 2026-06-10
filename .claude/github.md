@@ -46,6 +46,7 @@ Scope: `tasks`, `ai`, `api`, `ui`, `db`, `agents`, `deps`
 - Body must include: summary, what changed, how to test
 - PRs target `develop`, not `main`
 - Merge `develop` → `main` only when a set of features is complete
+- CI (`.github/workflows/ci.yml`) must pass before merging: type-check, lint, tests, build. Run `npx tsc --noEmit && npm run lint && npm test` locally before pushing.
 
 ## PR body template
 
