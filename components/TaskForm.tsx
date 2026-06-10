@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { Task, TaskStatus, TaskPriority, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
 import { STATUS_OPTIONS, PRIORITY_OPTIONS } from '@/lib/styling'
+import { apiImproveTask } from '@/lib/api-client'
 
 interface TaskFormProps {
   task?: Task
@@ -16,6 +17,9 @@ export default function TaskForm({ task, onSubmit, onClose, parentId }: TaskForm
   const [description, setDescription] = useState(task?.description ?? '')
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'todo')
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 'medium')
+  const [improving, setImproving] = useState(false)
+  const [improveError, setImproveError] = useState<string | null>(null)
+  const [original, setOriginal] = useState<{ title: string; description: string } | null>(null)
   const modalRef = useRef<HTMLDivElement>(null)
 
   const isEdit = Boolean(task)
@@ -53,6 +57,29 @@ export default function TaskForm({ task, onSubmit, onClose, parentId }: TaskForm
     modal.addEventListener('keydown', handleTab)
     return () => modal.removeEventListener('keydown', handleTab)
   }, [])
+
+  async function handleImprove() {
+    if (!title.trim() || improving) return
+    setImproving(true)
+    setImproveError(null)
+    try {
+      const improved = await apiImproveTask({ title: title.trim(), description })
+      setOriginal({ title, description })
+      setTitle(improved.title)
+      setDescription(improved.description)
+    } catch (err) {
+      setImproveError(err instanceof Error ? err.message : 'Failed to improve task')
+    } finally {
+      setImproving(false)
+    }
+  }
+
+  function handleUndoImprove() {
+    if (!original) return
+    setTitle(original.title)
+    setDescription(original.description)
+    setOriginal(null)
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -115,9 +142,40 @@ export default function TaskForm({ task, onSubmit, onClose, parentId }: TaskForm
 
           {/* Description */}
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="task-description" className="text-sm font-medium text-zinc-300">
-              Description
-            </label>
+            <div className="flex items-center justify-between">
+              <label htmlFor="task-description" className="text-sm font-medium text-zinc-300">
+                Description
+              </label>
+              <div className="flex items-center gap-2">
+                {original && !improving && (
+                  <button
+                    type="button"
+                    onClick={handleUndoImprove}
+                    className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+                  >
+                    Undo
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleImprove}
+                  disabled={!title.trim() || improving}
+                  className="flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-300 transition-colors hover:border-blue-600/60 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {improving ? (
+                    <svg className="h-3 w-3 animate-spin text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                  {improving ? 'Improving…' : 'Improve with AI'}
+                </button>
+              </div>
+            </div>
             <textarea
               id="task-description"
               value={description}
@@ -126,6 +184,7 @@ export default function TaskForm({ task, onSubmit, onClose, parentId }: TaskForm
               rows={3}
               className="resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
+            {improveError && <p className="text-xs text-red-400">{improveError}</p>}
           </div>
 
           {/* Status + Priority row */}
