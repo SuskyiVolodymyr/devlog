@@ -3,6 +3,7 @@ import { getTask } from '@/lib/db'
 import { headers } from 'next/headers'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { createAgentSSEResponse } from '@/lib/sse'
+import { clarificationSchema } from '@/lib/schemas'
 
 export async function POST(
   request: Request,
@@ -21,7 +22,14 @@ export async function POST(
     if (!task) return Response.json({ error: 'Task not found' }, { status: 404 })
 
     const body = await request.json().catch(() => ({}))
-    const clarification = typeof body.clarification === 'string' ? body.clarification : undefined
+    let clarification: string | undefined
+    if (typeof body.clarification === 'string') {
+      const parsed = clarificationSchema.safeParse(body.clarification)
+      if (!parsed.success) {
+        return Response.json({ error: parsed.error.issues[0].message }, { status: 400 })
+      }
+      clarification = parsed.data
+    }
 
     return createAgentSSEResponse((onToken) =>
       runDecompositionAgent(id, clarification, onToken).then(() => undefined)

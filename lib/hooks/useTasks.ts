@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import {
   useQuery,
   useInfiniteQuery,
@@ -39,7 +40,11 @@ export function useTaskList(filters: TaskFilters) {
     },
   })
 
-  const tasks = query.data?.pages.flatMap((p) => p.tasks) ?? []
+  // Stable array reference per data version — downstream memoization depends on it
+  const tasks = useMemo(
+    () => query.data?.pages.flatMap((p) => p.tasks) ?? [],
+    [query.data]
+  )
   const total = query.data?.pages[0]?.total ?? 0
 
   return {
@@ -54,9 +59,13 @@ export function useTaskList(filters: TaskFilters) {
 }
 
 // Subtask stats are embedded in the task list response — no extra requests needed.
+// Shared constant keeps the fallback reference-stable so memoized cards don't re-render.
+const EMPTY_STATS = { total: 0, done: 0 }
+
 export function useSubtaskStats(tasks: Task[]) {
-  return Object.fromEntries(
-    tasks.map((task) => [task.id, task.subtaskStats ?? { total: 0, done: 0 }])
+  return useMemo(
+    () => Object.fromEntries(tasks.map((task) => [task.id, task.subtaskStats ?? EMPTY_STATS])),
+    [tasks]
   )
 }
 
