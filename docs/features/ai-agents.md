@@ -19,7 +19,8 @@ Models come from `lib/constants.ts`: `CLAUDE_MODEL_CAPABLE` (Sonnet — reasonin
 - **Prose for the human, JSON for the UI.** Agents whose output drives UI components (navigation cards, chips) end their response with a sentinel followed by a JSON block containing exact task IDs/titles from tool results. Prioritize uses `\n---\n`; backlog review uses `[FLAGGED_JSON]` (a bare `---` collides with markdown horizontal rules the model emits mid-prose — prefer a unique bracketed marker for new agents).
 - **No IDs in prose.** Task IDs belong only in the JSON block; prompts must say so explicitly or the model leaks `[title](id)` links into the text.
 - **Tight format rules beat post-processing.** Word caps per bullet, "each label appears at most once", "call tools silently — produce no text until you have all the data". These rules exist because their absence produced real bugs; keep them when editing prompts.
-- The modal renderer (`renderMarkdown` in `AIPanel.tsx`) supports `**bold**` and `•`/`-` bullets only — don't prompt for headers, tables, or nested lists.
+- The modal renderer (`renderMarkdown` in `components/AgentModal.tsx`) supports `**bold**` and `•`/`-` bullets only — don't prompt for headers, tables, or nested lists.
+- Sentinel parsing lives in `lib/agents/output.ts` (`proseBefore`, `parsePrioritizeRef`, `parseFlaggedRefs`) — add new parsers there, not in components.
 
 ## The agents
 
@@ -38,5 +39,5 @@ Note the token optimization on Status Update and Improve Task: when the route al
 1. `lib/agents/[name].ts` — system prompt + `runAgentLoop` call
 2. `app/api/ai/[name]/route.ts` — rate limit check, then `createAgentSSEResponse` (or plain JSON if the output fills a form)
 3. One entry in `AI_ACTIONS` (`lib/constants.ts`) — the panel button appears automatically; `taskOnly`/`boardOnly` control placement
-4. If it needs a modal: follow the prioritize/backlog pattern in `AIPanel.tsx` (instant open, streamed text, typewriter state pair, sentinel parsing after animation completes)
+4. If it needs a modal: add the key to `MODAL_ACTIONS` in `lib/hooks/useAgentStream.ts` (streaming + typewriter come free), render an `<AgentModal>` in `AIPanel.tsx` with the parsed display text, and add a parser to `lib/agents/output.ts` if it carries structured refs
 5. Verify live in the browser before committing — prompt-format bugs (sentinel collisions, repeated bullets, leaked IDs) only surface end-to-end
