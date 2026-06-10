@@ -1,7 +1,4 @@
 @AGENTS.md
-@.claude/architecture.md
-@.claude/conventions.md
-@.claude/github.md
 
 # DevLog
 
@@ -15,6 +12,17 @@ DevLog lets engineers track tasks (CRUD with status/priority) and removes fricti
 - **Decomposition agent** — breaks a task into subtasks; asks a clarifying question if the task is vague
 - **Status update agent** — drafts a structured Slack-style async update based on task + subtask state
 - **Improve with AI** — rewrites a rough task title/description into clear English from the task form
+
+## Context map — read the relevant guide before working
+
+`AGENTS.md` (imported above) holds the universal rules and always loads. The domain guides below load on demand — before touching an area, read its guide with the Read tool:
+
+| If you are working on… | Read first |
+|------------------------|------------|
+| Data layer, schema, API routes, state management | `.claude/architecture.md` |
+| Writing or refactoring code — naming, file layout, error handling, styling | `.claude/conventions.md` |
+| Branches, commits, PRs, merges | `.claude/github.md` |
+| AI agents in `lib/agents/` — prompts, output contracts, adding an agent | `docs/features/ai-agents.md` |
 
 ## Key directories
 
