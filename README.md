@@ -142,12 +142,14 @@ Task list responses embed subtask progress counts via correlated subqueries — 
 | AI | Anthropic Claude API (`claude-sonnet-4-6` / `claude-haiku-4-5`) |
 | Server state | TanStack Query v5 — caching, infinite pagination, optimistic status updates |
 | Validation | Zod at API boundaries |
+| Tests | Vitest — data layer and agent output parsers |
+| CI | GitHub Actions — type-check, lint, tests, and build on every PR and push to `main`/`develop` |
 
 ## Deliberate trade-offs
 
 - **No auth** — single-user scope, as specified
 - **SQLite only** — single-writer limitation documented above; Postgres swap stays behind `lib/db.ts`
 - **In-memory rate limiting** — per-process, resets on restart; fine for local single-user, would need Redis behind a load balancer
-- **No automated tests** — within the 8–10h scope cap, verification was strict TypeScript + ESLint + live browser testing of every feature (each AI flow was exercised end-to-end before commit). With more time, the first tests would target `lib/db.ts` and the agent output parsers, where regressions are most likely.
+- **Thin test suite by design** — tests target the two highest-regression-risk areas: `lib/db.ts` (CRUD, cascade, filters, embedded subtask stats, the update allowlist) and the agent output parsers (sentinel handling, malformed-JSON tolerance — including a regression test for a real sentinel-collision bug). UI and agent prompts are verified by live browser testing instead; component tests would mostly re-test React and mock away the interesting parts.
 - **Decompose clarification detection is heuristic** — the agent signals a question via response shape; a structured tool-based handshake would be more robust but adds a round-trip
 - **Modal markdown renderer is hand-rolled** (~50 lines for bold + bullets + links) — a library would handle more syntax, but the agents' output format is pinned by their prompts, so the extra surface is unnecessary
