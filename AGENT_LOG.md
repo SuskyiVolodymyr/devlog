@@ -20,11 +20,13 @@ All development done with Claude Code as the primary coding assistant. The sessi
 
 **What I asked Claude to do**: Design the full project architecture, decide on storage strategy, plan the AI agent approach, then set up all Claude Code context files.
 
-**What Claude did**: Proposed the separation of CLAUDE.md into focused per-domain files (architecture, conventions, github rules) so context loads selectively rather than as one monolithic file. That was Claude's suggestion — I had expected one big file. It also flagged that Next.js 16 auto-generates both `CLAUDE.md` and `AGENTS.md` via `create-next-app`, which is a native signal that the ecosystem is catching up to agent-assisted development.
+**The structure was my call**: I wanted the Claude Code infrastructure split into focused per-domain files (architecture, conventions, github rules) instead of one monolithic CLAUDE.md — for better token usage, more relevant context per task, and fewer misunderstandings from the agent reading rules that don't apply to the job at hand. Claude wrote the content of each file from my outline.
+
+**What Claude added**: It flagged that Next.js 16 auto-generates both `CLAUDE.md` and `AGENTS.md` via `create-next-app`, which is a native signal that the ecosystem is catching up to agent-assisted development.
 
 **What I changed**: Minor wording in `.claude/github.md` to match our exact branching flow.
 
-**Honest assessment**: The infrastructure setup was nearly perfect out of the box. Claude understood the purpose of keeping context lean without being asked explicitly.
+**Honest assessment**: With the structure decided upfront, the content Claude generated for each file was nearly perfect out of the box and held up for the whole build — conventions written in Phase 0 were still being followed by sub-agents many sessions later.
 
 ---
 
@@ -196,13 +198,14 @@ This phase was the clearest example of "AI as amplifier, not replacement": every
 ## What Claude did well
 
 - **Context retention**: Conventions from `.claude/` were followed consistently across multiple agent sessions and PR reviews without repeated reminders
-- **Architecture decisions**: The shared `runAgentLoop` pattern, the `parentId`-as-subtask design, and the selective context loading were all Claude suggestions that held up through the build
+- **Architecture decisions**: The shared `runAgentLoop` pattern and the `parentId`-as-subtask design were Claude suggestions that held up through the build
 - **Post-merge integration**: Finding and explaining the null coercion bug, the type boundary gaps, and the stub conflict — all diagnosed and fixed without help
 - **Self-verification**: Driving the actual browser (Claude-in-Chrome MCP) to test every UI change end-to-end before committing — this caught prompt-format bugs (sentinel collision, ID leaks, repeated bullets) that no amount of code reading would have found
 - **Diagnosis from evidence**: Tracing the N+1 from pasted server logs to the exact hook, and proposing the correlated-subquery fix in one pass
 
 ## What needed human judgment
 
+- **Agent infrastructure design**: Splitting the Claude Code context into focused per-domain files (`.claude/architecture.md`, `conventions.md`, `github.md`) was my decision — made for token efficiency, more relevant context per task, and fewer misunderstandings from rules that don't apply to the job at hand
 - **Product taste**: Every UX iteration in Phase 10 started with me using the app and reacting — "too much text", "still not smooth", "doesn't fit the screen". Claude implemented and verified; the judgment of what *feels* right stayed human
 - **Noticing what's wrong**: The N+1 was found because I read the dev server logs and felt 35 requests was too many — the earlier automated review had rationalized it as acceptable
 - **Feature ideas**: The fifth AI feature (Improve with AI) came from my own pain as a non-native English speaker; the letter-by-letter typewriter rendering was also my suggestion
