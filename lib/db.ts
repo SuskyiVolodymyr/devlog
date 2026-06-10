@@ -30,6 +30,8 @@ type TaskRow = {
   parent_id: string | null
   notes: string
   created_at: string
+  subtask_total?: number
+  subtask_done?: number
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -42,6 +44,9 @@ function rowToTask(row: TaskRow): Task {
     parentId: row.parent_id,
     notes: row.notes,
     createdAt: row.created_at,
+    ...(row.subtask_total !== undefined && {
+      subtaskStats: { total: row.subtask_total, done: row.subtask_done ?? 0 },
+    }),
   }
 }
 
@@ -101,7 +106,12 @@ export function getTasksPage(filters: TaskFilters, page: number, limit: number):
 
   const { total } = db.prepare(`SELECT COUNT(*) as total FROM tasks ${where}`).get(...params) as { total: number }
   const rows = db
-    .prepare(`SELECT * FROM tasks ${where} ${order} LIMIT ? OFFSET ?`)
+    .prepare(`
+      SELECT t.*,
+        (SELECT COUNT(*) FROM tasks s WHERE s.parent_id = t.id) AS subtask_total,
+        (SELECT COUNT(*) FROM tasks s WHERE s.parent_id = t.id AND s.status = 'done') AS subtask_done
+      FROM tasks t ${where} ${order} LIMIT ? OFFSET ?
+    `)
     .all(...params, limit, page * limit) as TaskRow[]
 
   return { tasks: rows.map(rowToTask), total, page, limit }

@@ -5,7 +5,6 @@ import {
   useInfiniteQuery,
   useMutation,
   useQueryClient,
-  useQueries,
   type InfiniteData,
 } from '@tanstack/react-query'
 import type { Task, TaskPage, TaskFilters, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@/lib/types'
@@ -54,22 +53,10 @@ export function useTaskList(filters: TaskFilters) {
   }
 }
 
+// Subtask stats are embedded in the task list response — no extra requests needed.
 export function useSubtaskStats(tasks: Task[]) {
-  const queries = useQueries({
-    queries: tasks.map((task) => ({
-      queryKey: ['subtask-stats', task.id] as const,
-      queryFn: async () => {
-        const [totalRes, doneRes] = await Promise.all([
-          apiGetTasks(new URLSearchParams({ parentId: task.id, limit: '1' })),
-          apiGetTasks(new URLSearchParams({ parentId: task.id, status: 'done', limit: '1' })),
-        ])
-        return { total: totalRes.total, done: doneRes.total }
-      },
-      staleTime: 30_000,
-    })),
-  })
   return Object.fromEntries(
-    tasks.map((task, i) => [task.id, queries[i]?.data ?? { total: 0, done: 0 }])
+    tasks.map((task) => [task.id, task.subtaskStats ?? { total: 0, done: 0 }])
   )
 }
 
@@ -118,7 +105,7 @@ export function useCreateTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       qc.invalidateQueries({ queryKey: ['subtasks'] })
-      qc.invalidateQueries({ queryKey: ['subtask-stats'] })
+      // subtask stats are embedded in the tasks response — invalidating ['tasks'] is enough
     },
   })
 }
@@ -142,7 +129,7 @@ export function useDeleteTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       qc.invalidateQueries({ queryKey: ['subtasks'] })
-      qc.invalidateQueries({ queryKey: ['subtask-stats'] })
+      // subtask stats are embedded in the tasks response — invalidating ['tasks'] is enough
     },
   })
 }
